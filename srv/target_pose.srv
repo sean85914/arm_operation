@@ -1,0 +1,5 @@
+geometry_msgs/Pose target_pose
+int32 finger_dist
+float32 factor
+---
+string plan_result

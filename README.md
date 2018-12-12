@@ -29,7 +29,7 @@
       * [string](http://docs.ros.org/jade/api/std_msgs/html/msg/String.html) plan_result
   * target_pose.srv
     * Request:
-      * [geometry_msgs/Pose](http://docs.ros.org/lunar/api/geometry_msgs/html/msg/Pose.html)
+      * [geometry_msgs/Pose](http://docs.ros.org/lunar/api/geometry_msgs/html/msg/Pose.html) target_pose
       * [int32](http://docs.ros.org/jade/api/std_msgs/html/msg/Int32.html) finge_dist
       * [float32](http://docs.ros.org/jade/api/std_msgs/html/msg/Float32.html) factor
     * Response:

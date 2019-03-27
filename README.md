@@ -11,6 +11,7 @@
       * [/ur5_control/loose_gripper](http://docs.ros.org/melodic/api/std_srvs/html/srv/Empty.html)
     * Publish topics
       * [/CModelRobotOutput](http://docs.ros.org/hydro/api/robotiq_c_model_control/html/msg/CModel_robot_output.html)
+        *  Topic to control gripper
     * Subscribe topics
       * [/joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
     * Actions

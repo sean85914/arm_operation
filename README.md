@@ -1,4 +1,5 @@
 # arm_operation package
+## TODO: dependencies
 * Nodes:
   * ur5_control_server
     * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, return to predefined pose, loose robotiq 2-finger gripper, etc.
@@ -31,7 +32,7 @@
   * target_pose.srv
     * Request:
       * [geometry_msgs/Pose](http://docs.ros.org/lunar/api/geometry_msgs/html/msg/Pose.html) target_pose
-      * [int32](http://docs.ros.org/jade/api/std_msgs/html/msg/Int32.html) finge_dist
+      * [int32](http://docs.ros.org/jade/api/std_msgs/html/msg/Int32.html) finger_dist
       * [float32](http://docs.ros.org/jade/api/std_msgs/html/msg/Float32.html) factor
     * Response:
       * [string](http://docs.ros.org/jade/api/std_msgs/html/msg/String.html) plan_result

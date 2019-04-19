@@ -232,17 +232,17 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
     // Preprocess joint angle to -pi ~ pi
     for (int j = 0; j < 6; ++j) {
       q_sols[i*6 + j] = validAngle(q_sols[i*6 + j]); 
-    }
+    } 
     // Convert wrist joints to available range
-    wrist1_collision = wrist_check_bound(q_sols[i*6+3], wrist1_upper_bound, wrist1_lower_bound);
-    wrist2_collision = wrist_check_bound(q_sols[i*6+4], wrist2_upper_bound, wrist2_lower_bound);
+    wrist1_collision = wrist_check_bound(q_sols[i*6+3], wrist1_upper_bound, wrist1_lower_bound); 
+    wrist2_collision = wrist_check_bound(q_sols[i*6+4], wrist2_upper_bound, wrist2_lower_bound); 
     wrist3_collision = wrist_check_bound(q_sols[i*6+5], wrist3_upper_bound, wrist3_lower_bound);
     for (int j = 0; j < 6; ++j) {dist += pow(q_sols[i*6 + j] - joint[j], 2);}
     // Find solution with minimum joint angle difference
     if(min>dist && !wrist1_collision && !wrist2_collision && !wrist3_collision){
       min = dist;
       index = i;
-    } dist = 0;
+    } dist = 0; 
   } if(index == -1) return 0; // All solutions will self-collision
   for(int i=0; i<6; ++i) sol[i] = q_sols[index*6+i];
   return (num_sols = sols);
@@ -251,8 +251,8 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
 bool RobotArm::wrist_check_bound(double &joint, double upper, double lower){
   if(joint>upper) joint-=2*M_PI;
   else if(joint<lower) joint+=2*M_PI;
-  if(joint>lower and joint<upper) return true;
-  return false;
+  if(joint>lower and joint<upper) return false;
+  return true;
 }
 
 geometry_msgs::Pose RobotArm::getCurrentTCPPose(void){
@@ -302,23 +302,18 @@ void RobotArm::StartTrajectory(control_msgs::FollowJointTrajectoryGoal goal){
 control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geometry_msgs::Pose pose, double factor){
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   // Get closest joint space solution
-  double sol[6] = {0};
+  double sol[6] = {0}; ROS_INFO("[%s] Joints to go solve from IK: ", ros::this_node::getName().c_str());
+  // If not solutions, assign angle now to sol
   if(!PerformIK(pose, sol)) {
     for (int i = 0; i < 6; ++i) sol[i] = joint[i];
-  }
-  /*if(wrist1_collision or wrist2_collision or wrist3_collision) {
-    ROS_WARN("Wrist will collide with itself, ignore the solution...");
-    for (int i = 0; i < 6; ++i){
-      t.points[0].positions[i] = t.points[1].positions[i] = joint[i];
-      t.points[0].velocities[i] = t.points[1].velocities[i] = 0;
-    } return goal;
-  }*/
+  } 
   for (int i = 0; i < 6; ++i) {
+    printf("%f ", sol[i]);
     t.points[0].positions[i] = joint[i];
-    t.points[1].positions[i] = sol[i];
+    t.points[1].positions[i] = sol[i]; 
     t.points[0].velocities[i] = 
     t.points[1].velocities[i] = 0;
-  }
+  } printf("\n");
   t.points[0].time_from_start = ros::Duration(0);
   t.points[1].time_from_start = ros::Duration(calculate_time(joint, sol, factor));
   ROS_INFO("[%s] Execution time: %d", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));

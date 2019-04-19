@@ -42,6 +42,6 @@ Clone this repo into your catkin_ws
 
 
 To simulate UR5 in Gazebo
-> $ roslaunch ur_gazebo ur5.launch
+> $ roslaunch ur_gazebo ur5.launch  
 > $ roslaunch arm_operation sim.launch
 

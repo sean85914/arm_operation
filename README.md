@@ -1,5 +1,4 @@
 # arm_operation package
-## TODO: dependencies
 * Nodes:
   * ur5_control_server
     * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, etc.
@@ -34,3 +33,15 @@
       * [float32](http://docs.ros.org/jade/api/std_msgs/html/msg/Float32.html) factor
     * Response:
       * [string](http://docs.ros.org/jade/api/std_msgs/html/msg/String.html) plan_result
+      
+      
+## How to use
+Clone this repo into your catkin_ws
+> $ cd ~/path/to/your/ws/src && git clone https://github.com/sean85914/arm_operation.git  
+> $ cd ~/path/to/your/ws && catkin_make && source devel/setup.bash
+
+
+To simulate UR5 in Gazebo
+> $ roslaunch ur_gazebo ur5.launch
+> $ roslaunch arm_operation sim.launch
+

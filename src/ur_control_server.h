@@ -1,22 +1,23 @@
 /*
+ *  Some useful services to control UR robot
  *  Subscribed topics:
  *    ~joint_states: joint state of universal robot
  *  Action interface:
  *    /follow_joint_trajectory
  *  Services:
- *    ~ur5_control/goto_pose
- *    ~ur5_control/go_straight
- *    ~ur5_control/goto_joint_pose
+ *    ~ur5_control/goto_pose: move robot TCP to given target pose in Cartesian space
+ *    ~ur5_control/go_straight: move robot TCP from current pose to target pose straightly
+ *    ~ur5_control/goto_joint_pose: move robot to given joint space
  *  Parameters:
- *    ~tool_length
- *    ~sim
- *    ~prefix
- *    ~wrist1_upper_bound
- *    ~wrist1_lower_bound
- *    ~wrist2_upper_bound
- *    ~wrist2_lower_bound
- *    ~wrist3_upper_bound
- *    ~wrist3_lower_bound
+ *    ~tool_length: length from ee_link to tcp_link
+ *    ~sim: true if using simulation
+ *    ~prefix: joint name prefix
+ *    ~wrist1_upper_bound: wrist 1 upper bound
+ *    ~wrist1_lower_bound: wrist 1 lower bound
+ *    ~wrist2_upper_bound: wrist 2 upper bound
+ *    ~wrist2_lower_bound: wrist 2 lower bound
+ *    ~wrist3_upper_bound: wrist 3 upper bound
+ *    ~wrist3_lower_bound: wrist 3 lower bound
  */
 #ifndef UR_CONTROL_SERVER_H
 #define UR_CONTROL_SERVER_H

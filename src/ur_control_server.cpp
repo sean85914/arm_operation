@@ -120,8 +120,9 @@ bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, a
     for(int j=0; j<6; ++j) {waypoint_sol_[i*6 + j] = temp[j];}
   }
   double total_time = calculate_time(joint, temp, req.factor); // Total time cost from initial to goal
-  ROS_INFO("[%s] Execution time: %.f", ros::this_node::getName().c_str(), total_time);
+  ROS_INFO("[%s] Execution time: %.f seconds", ros::this_node::getName().c_str(), total_time);
   // Least Square to solve joints angular velocities
+  // Assume: q(t) = a*t^2 + b*t + c
   Eigen::MatrixXd A(NUMBEROFPOINTS+1, 3);
   Eigen::MatrixXd x(3, 6);
   Eigen::MatrixXd b(NUMBEROFPOINTS+1, 6);
@@ -167,7 +168,7 @@ bool RobotArm::GotoJointPoseService(arm_operation::joint_pose::Request  &req, ar
   double togo[6]; for(int i=0; i<6; ++i) togo[i] = req.joint[i];
   t.points[0].time_from_start = ros::Duration(0);
   t.points[1].time_from_start = ros::Duration(calculate_time(joint, togo));
-  ROS_INFO("[%s] Execution time: %d", ros::this_node::getName().c_str(), calculate_time(joint, togo));
+  ROS_INFO("[%s] Execution time: %d seconds", ros::this_node::getName().c_str(), calculate_time(joint, togo));
   StartTrajectory(goal);
   res.plan_result = "Success";
   return true;
@@ -316,6 +317,6 @@ control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geo
   } printf("\n");
   t.points[0].time_from_start = ros::Duration(0);
   t.points[1].time_from_start = ros::Duration(calculate_time(joint, sol, factor));
-  ROS_INFO("[%s] Execution time: %d", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));
+  ROS_INFO("[%s] Execution time: %d seconds", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));
   return goal;
 }

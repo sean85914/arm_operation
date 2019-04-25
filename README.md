@@ -21,6 +21,12 @@
       * ~wrist2_lower_bound: wrist 2 constraint lower bound, default is -3.14
       * ~wrist3_upper_bound: wrist 3 constraint upper bound, default is 5 deg
       * ~wrist3_lower_bound: wrist 3 constraint lower bound, default is -220 deg
+  * get_current_pose
+    * Record current joint pose and save it in given file, press 'e' to exit and 's' to save file
+    * Subscribe topics
+      * [/joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
+    * Parameters
+      * ~file_name: file name without its extension
 * Services:
   * joint_pose.srv
     * Request:
@@ -43,5 +49,9 @@ Clone this repo into your catkin_ws
 
 To simulate UR5 in Gazebo
 > $ roslaunch ur_gazebo ur5.launch  
-> $ roslaunch arm_operation sim.launch
+> $ roslaunch arm_operation ur5_sim.launch
+
+For real robot,
+> $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]
+> $ roslaunch arm_operation urX_real.launch tool_length:=[tool_length]
 

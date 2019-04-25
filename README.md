@@ -1,11 +1,11 @@
 # arm_operation package
 * Nodes:
-  * ur5_control_server
+  * urX_control_server
     * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, etc.
     * Services
-      * ~ur5_control/goto_pose (arm_operation::target_pose)
-      * ~ur5_control/go_straight (arm_operation::target_pose)
-      * ~ur5_control/goto_joint_pose (arm_operation::joint_pose)
+      * ~ur_control/goto_pose (arm_operation::target_pose)
+      * ~ur_control/go_straight (arm_operation::target_pose)
+      * ~ur_control/goto_joint_pose (arm_operation::joint_pose)
     * Subscribe topics
       * [~joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
     * Actions

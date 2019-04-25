@@ -67,7 +67,7 @@ class GoToWP {
     wp_list = res;
   }
   void cbCallback(const std_msgs::Int16 msg){
-    if(msg.data>=wp_len) {ROS_WARN("Given index out of range, ignore..."); return;}
+    if(msg.data>=wp_len or msg.data<0) {ROS_WARN("Given index out of range, ignore..."); return;}
     for(int i=0; i<6; ++i){
       js_req.request.joint[i] = wp_list[msg.data][i];
     }

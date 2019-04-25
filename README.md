@@ -31,7 +31,7 @@
     * Subscribe topics:
       * [~index_to_go](http://docs.ros.org/melodic/api/std_msgs/html/msg/Int16.html)
     * Service Client
-      * [/ur3_control_server/ur_control/goto_joint_pose](joint_pose.srv)
+      * /ur3_control_server/ur_control/goto_joint_pose (joint_pose.srv)
     * Parameter:
       * ~file_name: input file with extension
 * Services:

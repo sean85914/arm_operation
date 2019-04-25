@@ -214,3 +214,6 @@ add_executable(ur5_control_server src/ur_control_server_node.cpp src/ur_control_
 add_dependencies(ur5_control_server ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
 target_link_libraries(ur5_control_server ${catkin_LIBRARIES} ur5_kin)
 
+add_executable(get_current_pose src/get_current_pose.cpp)
+add_dependencies(get_current_pose ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
+target_link_libraries(get_current_pose ${catkin_LIBRARIES})

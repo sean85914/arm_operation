@@ -5,9 +5,9 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh),
   // Subscriber
   sub_joint_state = pnh_.subscribe("joint_states", 1, &RobotArm::JointStateCallback, this);
   // Service server
-  goto_pose_srv = pnh_.advertiseService("ur5_control/goto_pose", &RobotArm::GotoPoseService, this);
-  go_straight_srv = pnh_.advertiseService("ur5_control/go_straight", &RobotArm::GoStraightLineService, this);
-  goto_joint_pose_srv = pnh_.advertiseService("ur5_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
+  goto_pose_srv = pnh_.advertiseService("ur_control/goto_pose", &RobotArm::GotoPoseService, this);
+  go_straight_srv = pnh_.advertiseService("ur_control/go_straight", &RobotArm::GoStraightLineService, this);
+  goto_joint_pose_srv = pnh_.advertiseService("ur_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
   // Parameters
   if(!pnh.getParam("tool_length", tool_length)) tool_length = 0.18;
   if(!pnh.getParam("prefix", prefix)) prefix="";

@@ -27,6 +27,13 @@
       * [/joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
     * Parameters
       * ~file_name: file name without its extension
+  * set_pose
+    * Subscribe topics:
+      * [~index_to_go](http://docs.ros.org/melodic/api/std_msgs/html/msg/Int16.html)
+    * Service Client
+      * [/ur3_control_server/ur_control/goto_joint_pose](joint_pose.srv)
+    * Parameter:
+      * ~file_name: input file with extension
 * Services:
   * joint_pose.srv
     * Request:

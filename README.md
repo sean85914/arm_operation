@@ -52,6 +52,6 @@ To simulate UR5 in Gazebo
 > $ roslaunch arm_operation ur5_sim.launch
 
 For real robot,
-> $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]
+> $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]  
 > $ roslaunch arm_operation urX_real.launch tool_length:=[tool_length]
 

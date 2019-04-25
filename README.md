@@ -1,6 +1,6 @@
 # arm_operation package
 ## Dependencies
-Please make sure you have > [universal_robot](http://wiki.ros.org/universal_robot) package in your workspace  
+Please make sure you have [universal_robot](http://wiki.ros.org/universal_robot) package in your workspace  
 If you want to run on real robot, also make sure you have [ur_modern_driver](https://github.com/ros-industrial/ur_modern_driver)  
 
 * Nodes:

@@ -210,8 +210,18 @@ include_directories(
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
-add_executable(ur5_control_server
-  src/ur5_control_server.cpp)
+add_executable(ur5_control_server src/ur_control_server_node.cpp src/ur_control_server.cpp)
 add_dependencies(ur5_control_server ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
 target_link_libraries(ur5_control_server ${catkin_LIBRARIES} ur5_kin)
 
+add_executable(ur3_control_server src/ur_control_server_node.cpp src/ur_control_server.cpp)
+add_dependencies(ur3_control_server ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
+target_link_libraries(ur3_control_server ${catkin_LIBRARIES} ur3_kin)
+
+add_executable(get_current_pose src/get_current_pose.cpp)
+add_dependencies(get_current_pose ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
+target_link_libraries(get_current_pose ${catkin_LIBRARIES})
+
+add_executable(set_pose src/set_pose.cpp)
+add_dependencies(set_pose ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
+target_link_libraries(set_pose ${catkin_LIBRARIES})

@@ -168,7 +168,7 @@ bool RobotArm::GotoJointPoseService(arm_operation::joint_pose::Request  &req, ar
   double togo[6]; for(int i=0; i<6; ++i) togo[i] = req.joint[i];
   t.points[0].time_from_start = ros::Duration(0);
   t.points[1].time_from_start = ros::Duration(calculate_time(joint, togo));
-  ROS_INFO("[%s] Execution time: %d seconds", ros::this_node::getName().c_str(), calculate_time(joint, togo));
+  ROS_INFO("[%s] Execution time: %f seconds", ros::this_node::getName().c_str(), calculate_time(joint, togo));
   StartTrajectory(goal);
   res.plan_result = "Success";
   return true;
@@ -280,13 +280,16 @@ geometry_msgs::Pose RobotArm::getCurrentTCPPose(void){
   return pose_now;
 }
 
-int RobotArm::calculate_time(const double *now, const double *togo, double factor){
-  int time;
+double RobotArm::calculate_time(const double *now, const double *togo, double factor){
+  double time;
   if(factor == 0.0) {ROS_WARN("Invalid factor, set to 0.5"); factor = 0.5;}
   double dist = 0;
   for(int i=0; i<6; ++i){
     dist += pow(now[i] - togo[i], 2);
-  } return (time = ceil(sqrt(dist)/factor));
+  }
+  if(sqrt(dist)/factor<0.5) time = 0.5;
+  else time = ceil(sqrt(dist)/factor);
+  return (time);
 }
 
 actionlib::SimpleClientGoalState RobotArm::getState() {
@@ -317,6 +320,6 @@ control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geo
   } printf("\n");
   t.points[0].time_from_start = ros::Duration(0);
   t.points[1].time_from_start = ros::Duration(calculate_time(joint, sol, factor));
-  ROS_INFO("[%s] Execution time: %d seconds", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));
+  ROS_INFO("[%s] Execution time: %f seconds", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));
   return goal;
 }

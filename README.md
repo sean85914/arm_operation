@@ -1,11 +1,15 @@
 # arm_operation package
+## Dependencies
+Please make sure you have [universal_robot](http://wiki.ros.org/universal_robot) package in your workspace  
+If you want to run on real robot, also make sure you have [ur_modern_driver](https://github.com/ros-industrial/ur_modern_driver)  
+
 * Nodes:
-  * ur5_control_server
+  * urX_control_server
     * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, etc.
     * Services
-      * ~ur5_control/goto_pose (arm_operation::target_pose)
-      * ~ur5_control/go_straight (arm_operation::target_pose)
-      * ~ur5_control/goto_joint_pose (arm_operation::joint_pose)
+      * ~ur_control/goto_pose (arm_operation::target_pose)
+      * ~ur_control/go_straight (arm_operation::target_pose)
+      * ~ur_control/goto_joint_pose (arm_operation::joint_pose)
     * Subscribe topics
       * [~joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
     * Actions
@@ -31,7 +35,7 @@
     * Subscribe topics:
       * [~index_to_go](http://docs.ros.org/melodic/api/std_msgs/html/msg/Int16.html)
     * Service Client
-      * [/ur3_control_server/ur_control/goto_joint_pose](joint_pose.srv)
+      * /ur3_control_server/ur_control/goto_joint_pose (joint_pose.srv)
     * Parameter:
       * ~file_name: input file with extension
 * Services:

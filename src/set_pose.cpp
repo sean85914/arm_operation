@@ -30,7 +30,7 @@ class GoToWP {
   // Service client
   ros::ServiceClient ur3_goto_joint_pose_client_;
   // Parse input file to double matrix array
-  void parse_file(){
+  bool parse_file(){
     std::string line;
     std::ifstream fp;
     int counter = 0;
@@ -39,7 +39,7 @@ class GoToWP {
     fp.open(file_name.c_str(), std::ifstream::in);
     if(!fp){
       ROS_ERROR("Can't open file.");
-      ros::shutdown();
+      return -1;
     }
     while(std::getline(fp, line)){
       ++counter;
@@ -64,10 +64,10 @@ class GoToWP {
     }
     // Close the file
     fp.close();
-    wp_list = res;
+    wp_list = res; return 1;
   }
   void cbCallback(const std_msgs::Int16 msg){
-    if(msg.data>=wp_len) {ROS_WARN("Given index out of range, ignore..."); return;}
+    if(msg.data>=wp_len or msg.data<0) {ROS_WARN("Given index out of range, ignore..."); return;}
     for(int i=0; i<6; ++i){
       js_req.request.joint[i] = wp_list[msg.data][i];
     }
@@ -77,8 +77,12 @@ class GoToWP {
   GoToWP(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh){
     sub_index = pnh_.subscribe("index_to_go", 1, &GoToWP::cbCallback, this);
     if(!pnh_.getParam("file_name", file_name)) {ROS_ERROR("No file provide, exit..."); ros::shutdown();}
-    parse_file(); ROS_INFO("Get %d waypoints", wp_len);
+    if(!parse_file()){ros::shutdown(); return;}
+    ROS_INFO("Get %d waypoints", wp_len);
     ur3_goto_joint_pose_client_ = nh_.serviceClient<arm_operation::joint_pose>("/ur3_control_server/ur_control/goto_joint_pose");
+    while(!ros::service::waitForService("/ur3_control_server/ur_control/goto_joint_pose", ros::Duration(3.0)) and ros::ok()){
+      ROS_WARN("Service not available, still waiting...");
+    }
   }
 };
 

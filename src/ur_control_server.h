@@ -123,7 +123,7 @@ class RobotArm {
    *  Output:
    *    int: time to execute this trajectory
    */
-  int calculate_time(const double *now, const double *togo, double factor=0.5);
+  double calculate_time(const double *now, const double *togo, double factor=0.5);
   /*
    * Get traejctory execution state
    */

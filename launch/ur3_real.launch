@@ -1,8 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-  <arg name="robot_ip">
+  <arg name="robot_ip"/>
   <arg name="tool_length" default="0.0"/>
-  <param name="use_sim_time" value="true"/>
   <!-- Turn on real robot -->
   <include file="$(find ur_modern_driver)/launch/ur3_bringup.launch">
     <arg name="robot_ip" value="$(arg robot_ip)"/>

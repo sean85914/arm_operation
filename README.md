@@ -76,7 +76,6 @@ To simulate URX in Gazebo
 > $ roslaunch ur_gazebo urX.launch  
 > $ roslaunch arm_operation urX_sim.launch
 
-For real robot,
-> $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]  
-> $ roslaunch arm_operation urX_real.launch config_file:=[tcp_config_file]
+For real robot, 
+> $ roslaunch arm_operation urX_real.launch config_file:=[tcp_config_file] robot_ip:=[ur_robot_ip]
 

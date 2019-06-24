@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules
 )
 find_package(Eigen REQUIRED)
 
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -67,6 +68,7 @@ add_service_files(
   FILES
   target_pose.srv
   joint_pose.srv
+  rotate_to_flip.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -81,7 +83,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs
   geometry_msgs
-  actionlib_msgs  ##PETER
+  actionlib_msgs
 )
 
 ################################################
@@ -115,8 +117,8 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
  INCLUDE_DIRS include
- LIBRARIES arm_operation
- CATKIN_DEPENDS roscpp rospy std_msgs roslib
+ #LIBRARIES arm_operation
+ CATKIN_DEPENDS roscpp rospy std_msgs roslib message_runtime
  DEPENDS Eigen
 )
 
@@ -184,11 +186,13 @@ include_directories(
 # )
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+)
+
+
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES
@@ -225,3 +229,12 @@ target_link_libraries(get_current_pose ${catkin_LIBRARIES})
 add_executable(set_pose src/set_pose.cpp)
 add_dependencies(set_pose ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
 target_link_libraries(set_pose ${catkin_LIBRARIES})
+
+add_executable(ur3_ik_solver script/ur_ik_solver.cpp)
+target_link_libraries(ur3_ik_solver ${catkin_LIBRARIES} ur3_kin)
+
+add_executable(ur5_ik_solver script/ur_ik_solver.cpp)
+target_link_libraries(ur5_ik_solver ${catkin_LIBRARIES} ur5_kin)
+
+add_executable(tcp_transform_publisher src/tcp_transform_publisher.cpp)
+target_link_libraries(tcp_transform_publisher ${catkin_LIBRARIES})

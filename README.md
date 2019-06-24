@@ -26,11 +26,10 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
       * ~wrist3_upper_bound: wrist 3 constraint upper bound, default is 5 deg
       * ~wrist3_lower_bound: wrist 3 constraint lower bound, default is -220 deg
   * get_current_pose
-    * Record current **joint pose** or **tcp_link position w.r.t. base_link** and save it into given file, for more detail, see the comment in src/get_current_pose.cpp
+    * Record current joint pose and save it in given file, press 'e' to exit and 's' to save file
     * Subscribe topics
       * [/joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
     * Parameters
-      * ~type: execution type
       * ~file_name: file name without its extension
   * set_pose
     * Subscribe topics:

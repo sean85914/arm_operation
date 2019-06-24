@@ -4,7 +4,7 @@ Please make sure you have [universal_robot](http://wiki.ros.org/universal_robot)
 If you want to run on real robot, also make sure you have [ur_modern_driver](https://github.com/ros-industrial/ur_modern_driver)  
 
 ## Nodes:
-  ### urX_control_server
+### urX_control_server
     * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, etc.
     * Services
       * ~ur_control/goto_pose (arm_operation::target_pose)
@@ -38,7 +38,7 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
       * /ur3_control_server/ur_control/goto_joint_pose (joint_pose.srv)
     * Parameter:
       * ~file_name: input file with extension
- ### Services:
+### Services:
   * joint_pose.srv
     * Request:
       * [float64[6]](http://docs.ros.org/jade/api/std_msgs/html/msg/Float64.html) joint
@@ -58,9 +58,9 @@ Clone this repo into your catkin_ws
 > $ cd ~/path/to/your/ws && catkin_make && source devel/setup.bash
 
 
-To simulate UR5 in Gazebo
-> $ roslaunch ur_gazebo ur5.launch  
-> $ roslaunch arm_operation ur5_sim.launch
+To simulate URX in Gazebo
+> $ roslaunch ur_gazebo urX.launch  
+> $ roslaunch arm_operation urX_sim.launch
 
 For real robot,
 > $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]  

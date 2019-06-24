@@ -32,12 +32,21 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
 * Parameters
   * ~file_name: file name without its extension
 ### set_pose
+* Set robot pose to user-given index where the list is stored in given file
 * Subscribe topics:
   * [~index_to_go](http://docs.ros.org/melodic/api/std_msgs/html/msg/Int16.html)
 * Service Client
-  * /ur3_control_server/ur_control/goto_joint_pose (joint_pose.srv)
+  * /ur3_control_server/ur_control/goto_joint_pose (arm_operation::joint_pose)
 * Parameter:
   * ~file_name: input file with extension
+### tcp_transform_publisher
+* Broadcast gripper and suction tool center point transformation
+* Transformation
+  * ee_link -> tcp_gripper, if gripper parameter available
+  * ee_link -> tcp_suction, if suction parameter available 
+* Parameters
+  * ~suction: double vector, in format [x, y, z]
+  * ~gripper: double vector, in format [x, y, z]
   
 ## Services:
 * joint_pose.srv
@@ -48,11 +57,15 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
 * target_pose.srv
   * Request:
     * [geometry_msgs/Pose](http://docs.ros.org/lunar/api/geometry_msgs/html/msg/Pose.html) target_pose
-    * [float32](http://docs.ros.org/jade/api/std_msgs/html/msg/Float32.html) factor
+    * [float32](http://docs.ros.org/jade/api/std_msgs/html/msg/Float32.html) factor: executation speed factor, the smaller the faster
   * Response:
     * [string](http://docs.ros.org/jade/api/std_msgs/html/msg/String.html) plan_result
       
-      
+## Helper execution file
+### urX_ik_solver
+* Check if given pose is reachable
+> $ rosrun arm_operation urX_ik_solver [tool_length] [x] [y] [z] [qx] [qy] [qz] [qw]
+
 ## How to use
 Clone this repo into your catkin_ws
 > $ cd ~/path/to/your/ws/src && git clone https://github.com/sean85914/arm_operation.git  
@@ -65,5 +78,5 @@ To simulate URX in Gazebo
 
 For real robot,
 > $ roslaunch ur_moder_driver urX_bringup.launch robot_ip=[your_robot_ip]  
-> $ roslaunch arm_operation urX_real.launch tool_length:=[tool_length]
+> $ roslaunch arm_operation urX_real.launch config_file:=[tcp_config_file]
 

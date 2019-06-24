@@ -40,7 +40,7 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
 * Parameter:
   * ~file_name: input file with extension
 ### tcp_transform_publisher
-* Broadcast gripper and suction tool center point transformation
+* Broadcast gripper and suction tool center point transformation, only use if you have two tools
 * Transformation
   * ee_link -> tcp_gripper, if gripper parameter available
   * ee_link -> tcp_suction, if suction parameter available 

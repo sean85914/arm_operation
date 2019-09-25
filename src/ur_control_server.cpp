@@ -10,15 +10,17 @@ inline double makeMinorRotate(const double joint_now, const double joint_togo){
 }
 
 // Public functions
-RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh), num_sols(1){
+RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh), num_sols(1), is_robot_enable(true){
   // Subscriber
   sub_joint_state = pnh_.subscribe("joint_states", 1, &RobotArm::JointStateCallback, this);
+  sub_robot_state = pnh_.subscribe("/ur_driver/robot_mode_state", 1, &RobotArm::RobotModeStateCallback, this);
   // Service server
   goto_pose_srv = pnh_.advertiseService("ur_control/goto_pose", &RobotArm::GotoPoseService, this);
   go_straight_srv = pnh_.advertiseService("ur_control/go_straight", &RobotArm::GoStraightLineService, this);
   goto_joint_pose_srv = pnh_.advertiseService("ur_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
-  fast_rotate_srv = pnh_.advertiseService("ur_control/fast_rotate", &RobotArm::FastRotateService, this);
-  flip_srv = pnh_.advertiseService("ur_control/flip_service", &RobotArm::FlipService, this);
+  //fast_rotate_srv = pnh_.advertiseService("ur_control/fast_rotate", &RobotArm::FastRotateService, this);
+  //flip_srv = pnh_.advertiseService("ur_control/flip_service", &RobotArm::FlipService, this);
+  robot_state_srv = pnh_.advertiseService("ur_control/get_robot_state", &RobotArm::GetRobotModeStateService, this);
   // Parameters
   if(!pnh_.getParam("tool_length", tool_length)) tool_length = 0.18;
   if(!pnh_.getParam("prefix", prefix)) prefix="";
@@ -37,9 +39,9 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh),
   ROS_INFO("[%s] Tool length: %f", ros::this_node::getName().c_str(), tool_length);
   ROS_INFO("[%s] Prefix: %s", ros::this_node::getName().c_str(), prefix.c_str());
   ROS_INFO("[%s] Sim: %s", ros::this_node::getName().c_str(), (sim==true?"True":"False"));
-  ROS_INFO("[%s] Wrist 1 upper bound: %f, lower bound: %f", ros::this_node::getName().c_str(), wrist1_upper_bound, wrist1_lower_bound);
-  ROS_INFO("[%s] Wrist 2 upper bound: %f, lower bound: %f", ros::this_node::getName().c_str(), wrist2_upper_bound, wrist2_lower_bound);
-  ROS_INFO("[%s] Wrist 3 upper bound: %f, lower bound: %f", ros::this_node::getName().c_str(), wrist3_upper_bound, wrist3_lower_bound);
+  ROS_INFO("[%s] Wrist 1 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist1_lower_bound, wrist1_upper_bound);
+  ROS_INFO("[%s] Wrist 2 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist2_lower_bound, wrist2_upper_bound);
+  ROS_INFO("[%s] Wrist 3 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist3_lower_bound, wrist3_upper_bound);
   ROS_INFO("*********************************************************************************");
   // Tell the action client that we want to spin a thread by default
   if(!sim)
@@ -85,8 +87,12 @@ bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_ope
                                                                req.target_pose.orientation.w);
   ROS_INFO("[%s] Joint state now: %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                       joint[0], joint[1], joint[2], joint[3], joint[4], joint[5]);
+  if(!is_robot_enable){
+    ROS_WARN("Robot is emergency/protective stop, abort request...");
+    res.plan_result = "robot_disable"; return true;
+  }
   StartTrajectory(ArmToDesiredPoseTrajectory(req.target_pose, req.factor));
-  if(num_sols == 0) {res.plan_result = "fail_to_find_solution"; return false;}
+  if(num_sols == 0) {res.plan_result = "fail_to_find_solution"; return true;}
   res.plan_result = "find_one_feasible_solution";
   return true;
 }
@@ -100,6 +106,10 @@ bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, a
                                                                         req.target_pose.orientation.y,
                                                                         req.target_pose.orientation.z,
                                                                         req.target_pose.orientation.w);
+  if(!is_robot_enable){
+    ROS_WARN("Robot is emergency/protective stop, abort request...");
+    res.plan_result = "robot_disable"; return true;
+  }
   trajectory_msgs::JointTrajectory &l = path.trajectory;
   geometry_msgs::Pose pose_now = getCurrentTCPPose();
   double waypoint_sol_[NUMBEROFPOINTS * 6] = {0}, temp[6] = {0};
@@ -172,6 +182,10 @@ bool RobotArm::GotoJointPoseService(arm_operation::joint_pose::Request  &req, ar
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   ROS_INFO("[%s] Receive new joint pose request: %f %f %f %f %f %f", 
             ros::this_node::getName().c_str(), req.joint[0], req.joint[1], req.joint[2], req.joint[3], req.joint[4], req.joint[5]);
+  if(!is_robot_enable){
+    ROS_WARN("Robot is emergency/protective stop, abort request...");
+    res.plan_result = "robot_disable"; return true;
+  }
   for (int i = 0; i < 6; ++i) {
     t.points[0].positions[i] = joint[i];
     t.points[1].positions[i] = req.joint[i];
@@ -187,6 +201,7 @@ bool RobotArm::GotoJointPoseService(arm_operation::joint_pose::Request  &req, ar
   return true;
 }
 
+/*
 bool RobotArm::FlipService(arm_operation::rotate_to_flip::Request &req,
                  arm_operation::rotate_to_flip::Response &res){
   ROS_INFO("Flip service: rotate_times: %d", req.rotate_times);
@@ -253,6 +268,9 @@ bool RobotArm::FlipService(arm_operation::rotate_to_flip::Request &req,
   }
 }
 
+*/
+
+/*
 bool RobotArm::FastRotateService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
   ROS_INFO("Receive fast rotate service call.");
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
@@ -309,6 +327,14 @@ bool RobotArm::FastRotateService(std_srvs::Empty::Request &req, std_srvs::Empty:
     return false;
   }
 }
+*/
+
+bool RobotArm::GetRobotModeStateService(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res){
+  res.success = is_robot_enable;
+  res.message = is_robot_enable?"robot enable":"robot disable";
+  ROS_INFO("%s", res.message.c_str());
+  return true;
+}
 
 // Private functions
 
@@ -330,6 +356,22 @@ void RobotArm::JointStateCallback(const sensor_msgs::JointState &msg){
     joint[1] = msg.position[1]; // shoulder_lift_joint
     joint[2] = msg.position[0]; // elbow_joint
     for(int i=3; i<6; ++i) joint[i] = msg.position[i];
+  }
+}
+
+void RobotArm::RobotModeStateCallback(const ur_msgs::RobotModeDataMsg &msg){
+  is_robot_enable = (!msg.is_emergency_stopped and !msg.is_protective_stopped) or (force>=FORCE_THRES);
+}
+
+void RobotArm::RobotWrenchCallback(const geometry_msgs::WrenchStamped &msg){
+  double f_x = msg.wrench.force.x,
+         f_y = msg.wrench.force.y,
+         f_z = msg.wrench.force.z;
+  force = sqrt(f_x*f_x+f_y*f_y+f_z*f_z);
+  if(force>=FORCE_THRES){
+    ROS_WARN("Hugh flance surface force detected, cancel the goal to prevent robot protective stop");
+    traj_client->cancelGoal();
+    is_robot_enable = false; // To prevent protective stop
   }
 }
 

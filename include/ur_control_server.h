@@ -2,13 +2,18 @@
  *  Some useful services to control UR robot
  *  Subscribed topics:
  *    ~joint_states: joint state of universal robot
+ *    /ur_driver/robot_mode_state: state of robot
+ *    /wrench: wrench of robot flange surface
  *  Action interface:
- *    /follow_joint_trajectory
+ *    /follow_joint_trajectory, if `sim` set to false
+ *    /arm_controller/follow_joint_trajectory, if `sim` set to true
  *  Services:
  *    ~ur5_control/goto_pose: move robot TCP to given target pose in Cartesian space
  *    ~ur5_control/go_straight: move robot TCP from current pose to target pose straightly
  *    ~ur5_control/goto_joint_pose: move robot to given joint space
  *    ~ur5_control/get_robot_state: get the state of the robot arm, i.e., whether it is emergency/protective stop
+ *    ~ur5_control/unlock_protective: service to unlock protective stop
+ *    ~ur5_control/stop_program: service to stop uploaded URScript program
  *  Parameters:
  *    ~tool_length: length from ee_link to tcp_link
  *    ~sim: true if using simulation
@@ -19,6 +24,7 @@
  *    ~wrist2_lower_bound: wrist 2 lower bound
  *    ~wrist3_upper_bound: wrist 3 upper bound
  *    ~wrist3_lower_bound: wrist 3 lower bound
+ *    ~force_thres: threshold force flange force, can be changed at runtime
  */
 #ifndef UR_CONTROL_SERVER_H
 #define UR_CONTROL_SERVER_H
@@ -40,9 +46,9 @@
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <arm_operation/target_pose.h>
 #include <arm_operation/joint_pose.h>
-#include <arm_operation/rotate_to_flip.h>
 #include <tf/transform_datatypes.h>
-
+// Self-defined
+#include "ur_script_socket.h"
 
 #define deg2rad(x) (x*M_PI/180.0)
 #define NUMBEROFPOINTS 10
@@ -61,13 +67,15 @@ class RobotArm {
   double wrist1_upper_bound, wrist1_lower_bound;
   double wrist2_upper_bound, wrist2_lower_bound;
   double wrist3_upper_bound, wrist3_lower_bound;
-  const double FORCE_THRES = 220.0f; // Higher than this value should cancel the goal
+  double force_thres;// Higher than this value should cancel the goal
+  bool is_send_goal;
   bool is_robot_enable;
   bool sim;
   bool wrist1_collision;
   bool wrist2_collision;
   bool wrist3_collision;
   std::string prefix;
+  URScriptSocket ur_control;
   // ROS
   // Node handle
   ros::NodeHandle nh_, pnh_;
@@ -79,12 +87,16 @@ class RobotArm {
   ros::ServiceServer goto_pose_srv;
   ros::ServiceServer go_straight_srv;
   ros::ServiceServer goto_joint_pose_srv;
+  ros::ServiceServer unlock_protective_stop_srv;
+  ros::ServiceServer stop_program_srv;
   //ros::ServiceServer fast_rotate_srv;
   //ros::ServiceServer flip_srv;
   ros::ServiceServer robot_state_srv;
   TrajClient *traj_client;
   control_msgs::FollowJointTrajectoryGoal goal; 
   control_msgs::FollowJointTrajectoryGoal path;
+  // Timer
+  ros::Timer checkParameterTimer;
   // Private Functions
   /* 
    *  Convert input joint angle to branch [-pi, pi]
@@ -95,7 +107,7 @@ class RobotArm {
    */
   inline double validAngle(double angle);
   /*
-   *  Subscriber callback, update joint values
+   *  Subscriber callback, update joints' value
    */
   void JointStateCallback(const sensor_msgs::JointState &msg);
   /*
@@ -103,9 +115,13 @@ class RobotArm {
    */
   void RobotModeStateCallback(const ur_msgs::RobotModeDataMsg &msg);
   /*
-   *  Subscriber callback, update robot flance surface force
+   *  Subscriber callback, update robot flange surface force
    */
   void RobotWrenchCallback(const geometry_msgs::WrenchStamped &msg);
+  /*
+   * Timer callback, to check if threshold parameter is changed
+   */
+  void TimerCallback(const ros::TimerEvent &event);
   /*
    *  Convert pose to transformation matrix
    *  Input:
@@ -157,11 +173,11 @@ class RobotArm {
    *    const double *togo: target pose joint position array
    *    double factor: joint velocity factor, the larger the faster, default as 0.5
    *  Output:
-   *    int: time to execute this trajectory
+   *    double: time to execute this trajectory
    */
   double calculate_time(const double *now, const double *togo, double factor=0.5);
   /*
-   * Get traejctory execution state
+   * Get trajectory execution state
    */
   inline actionlib::SimpleClientGoalState getState();
   /*
@@ -187,10 +203,9 @@ class RobotArm {
    bool GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GotoJointPoseService(arm_operation::joint_pose::Request &req, arm_operation::joint_pose::Response &res);
-   //bool FastRotateService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-   //bool FlipService(arm_operation::rotate_to_flip::Request &req,
-   //                 arm_operation::rotate_to_flip::Response &res);
    bool GetRobotModeStateService(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
+   bool UnlockProtectiveStopService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+   bool StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 };
 
 #endif

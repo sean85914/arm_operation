@@ -3,6 +3,8 @@
 Please make sure you have [universal_robot](http://wiki.ros.org/universal_robot) package in your workspace  
 If you want to run on real robot, also make sure you have [ur_modern_driver](https://github.com/ros-industrial/ur_modern_driver)  
 
+* Qt5
+
 ## Nodes:
 ### urX_control_server
 * Some useful services, such as set TCP link of the robot arm to user given cartesian/joint pose, etc.
@@ -10,13 +12,16 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
     * ~ur_control/goto_pose (arm_operation::target_pose)
     * ~ur_control/go_straight (arm_operation::target_pose)
     * ~ur_control/goto_joint_pose (arm_operation::joint_pose)
+    * ~ur_control/get_robot_state [(std_srvs/Trigger)](http://docs.ros.org/melodic/api/std_srvs/html/srv/Trigger.html)
   * Subscribe topics
     * [~joint_states](http://docs.ros.org/melodic/api/sensor_msgs/html/msg/JointState.html)
+    * [/wrench](http://docs.ros.org/jade/api/geometry_msgs/html/msg/WrenchStamped.html)
+    * [/ur_driver/robot_mode_state](http://docs.ros.org/kinetic/api/ur_msgs/html/msg/RobotModeDataMsg.html)
   * Actions
     * [/follow_joint_trajectory](http://docs.ros.org/api/control_msgs/html/action/FollowJointTrajectory.html) if sim is false
     * [/arm_controller/follow_joint_trajectory](http://docs.ros.org/api/control_msgs/html/action/FollowJointTrajectory.html) if sim is true
   * Parameters
-    * ~tool_length: tool length, default is 0.18 (robotiq 2-finder gripper)
+    * ~tool_length: tool length, default is 0.0
     * ~sim: true if using simulation, default is false
     * ~prefix: joint name prefix, default is ""
     * ~wrist1_upper_bound: wrist 1 constraint upper bound, default is -30 deg
@@ -65,6 +70,8 @@ If you want to run on real robot, also make sure you have [ur_modern_driver](htt
 ### urX_ik_solver
 * Check if given pose is reachable
 > $ rosrun arm_operation urX_ik_solver [tool_length] [x] [y] [z] [qx] [qy] [qz] [qw]
+### urX_ik_solver_ui
+* Graphic user interface for `urX_ik_solver`
 
 ## How to use
 Clone this repo into your catkin_ws

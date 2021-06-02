@@ -220,6 +220,10 @@ install(DIRECTORY include/${PROJECT_NAME}/
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
+add_executable(ur5e_control_server src/ur_control_server_node.cpp src/ur_control_server.cpp)
+add_dependencies(ur5e_control_server ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
+target_link_libraries(ur5e_control_server ${catkin_LIBRARIES} ur5e_kin)
+
 add_executable(ur5_control_server src/ur_control_server_node.cpp src/ur_control_server.cpp)
 add_dependencies(ur5_control_server ${catkin_EXPORTED_TARGETS} arm_operation_gencpp)
 target_link_libraries(ur5_control_server ${catkin_LIBRARIES} ur5_kin)

@@ -36,6 +36,7 @@
 #include <ur_kin.h>
 // MSG
 #include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Quaternion.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <sensor_msgs/JointState.h>
@@ -70,15 +71,20 @@ class RobotArm {
   double force_thres;// Higher than this value should cancel the goal
   bool is_send_goal;
   bool is_robot_enable;
-  bool sim;
+  bool right_order; // is joint in order J1, J2, J3, J4, J5, J6?
   bool wrist1_collision;
   bool wrist2_collision;
   bool wrist3_collision;
   std::string prefix;
+  std::string action_server_name;
+  std::vector<int> conversion;
+  std::vector<std::string> joints;
   URScriptSocket ur_control;
   // ROS
   // Node handle
   ros::NodeHandle nh_, pnh_;
+  // Publisher 
+  ros::Publisher pub_pose;
   // Subscriber
   ros::Subscriber sub_joint_state;
   ros::Subscriber sub_robot_state;
@@ -129,7 +135,6 @@ class RobotArm {
    *    double *T: output placeholder
    *  Output: None
    */
-  void PoseToDH(geometry_msgs::Pose pose, double *T);
   /*
    *  Perform inverse kinematic and return the optimized joints solution
    *  Input:
@@ -206,6 +211,15 @@ class RobotArm {
    bool GetRobotModeStateService(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
    bool UnlockProtectiveStopService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
    bool StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+   void PoseToDH(geometry_msgs::Pose pose, double *T);
+  /*
+   *  Perform forward kinematics and publish current pose (ee_link w.r.t. base_link)
+   *  Will use joints (with order 1, 2, 3, 4, 5, 6) from `/joint_states`
+   *  Input: 
+   *    double *T: output placeholder
+   *  Outpit: None
+   */
+  void PerformFK(double *T);
 };
 
 #endif

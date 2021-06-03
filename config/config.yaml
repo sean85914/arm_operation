@@ -8,4 +8,3 @@ wrist3_upper_bound: 3.1415926
 wrist4_lower_bound: -3.1415926
 action_server_name: "/scaled_pos_joint_traj_controller/follow_joint_trajectory"
 force_thres: .inf # DEPRECATED
-joints: ["elbow_joint", "shoulder_lift_joint", "shoulder_pan_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"] # `joint_states` joint name order

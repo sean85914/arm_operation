@@ -71,14 +71,14 @@ class RobotArm {
   double force_thres;// Higher than this value should cancel the goal
   bool is_send_goal;
   bool is_robot_enable;
-  bool right_order; // is joint in order J1, J2, J3, J4, J5, J6?
+  bool initialized;
   bool wrist1_collision;
   bool wrist2_collision;
   bool wrist3_collision;
-  std::string prefix;
+  bool new_topic;
   std::string action_server_name;
   std::vector<int> conversion;
-  std::vector<std::string> joints;
+  std::vector<std::string> joint_names;
   URScriptSocket ur_control;
   // ROS
   // Node handle

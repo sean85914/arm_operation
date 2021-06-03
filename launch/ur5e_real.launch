@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="robot_ip"/>
+  <!-- Turn on real robot -->
+  <include file="$(find ur_robot_driver)/launch/ur5e_bringup.launch">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+  </include>
+  <node pkg="arm_operation" type="ur5e_control_server" name="ur5e_control_server" output="screen">
+    <rosparam command="load" file="$(find arm_operation)/config/config.yaml"/>
+    <remap from="~joint_states" to="/joint_states"/>
+  </node>
+</launch>

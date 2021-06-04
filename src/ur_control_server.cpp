@@ -20,9 +20,9 @@ inline bool endswith(const std::string inStr, const std::string key){
 RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): 
   nh_(nh), pnh_(pnh), num_sols(1), is_robot_enable(true), is_send_goal(false), initialized(false), new_topic(false){
   // Publisher 
-  pub_pose = pnh_.advertise<geometry_msgs::PoseStamped>("pose", 100);
+  pub_pose = pnh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
   // Subscriber
-  sub_joint_state = pnh_.subscribe("joint_states", 1, &RobotArm::JointStateCallback, this);
+  sub_joint_state = pnh_.subscribe("joint_states", 100, &RobotArm::JointStateCallback, this);
   sub_robot_state = pnh_.subscribe("/ur_driver/robot_mode_state", 1, &RobotArm::RobotModeStateCallback, this);
   sub_wrench      = pnh_.subscribe("/wrench", 1, &RobotArm::RobotWrenchCallback, this);
   // Service server
@@ -78,7 +78,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   ROS_INFO("[%s] Action server connected!", ros::this_node::getName().c_str());
   // Timer
   checkParameterTimer = pnh_.createTimer(ros::Duration(1.0f), &RobotArm::TimerCallback, this);
-  pubPoseTimer = pnh_.createTimer(ros::Duration(0.002f), &RobotArm::pubPoseCallback, this);
+  pubPoseTimer = pnh_.createTimer(ros::Duration(0.001f), &RobotArm::pubPoseCallback, this);
   
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   trajectory_msgs::JointTrajectory &l = path.trajectory;

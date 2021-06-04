@@ -29,9 +29,11 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   goto_pose_srv = pnh_.advertiseService("ur_control/goto_pose", &RobotArm::GotoPoseService, this);
   go_straight_srv = pnh_.advertiseService("ur_control/go_straight", &RobotArm::GoStraightLineService, this);
   goto_joint_pose_srv = pnh_.advertiseService("ur_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
+  /*
   robot_state_srv = pnh_.advertiseService("ur_control/get_robot_state", &RobotArm::GetRobotModeStateService, this);
   unlock_protective_stop_srv = pnh_.advertiseService("ur_control/unlock_protective", &RobotArm::UnlockProtectiveStopService, this);
   stop_program_srv = pnh_.advertiseService("ur_control/stop_program", &RobotArm::StopProgramService, this);
+  */
   // Parameters
   if(!pnh_.getParam("tool_length", tool_length)) tool_length = 0.0;
   // Wrist1 default bound [-240, -30]
@@ -45,11 +47,13 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   if(!pnh_.getParam("wrist3_lower_bound", wrist3_lower_bound)) wrist3_lower_bound = deg2rad(-220);
   if(!pnh_.getParam("action_server_name", action_server_name))
     action_server_name = "/follow_joint_trajectory";
+  /*
   if(!pnh_.getParam("force_thres", force_thres)){
     force_thres = 100.0f;
     pnh_.setParam("force_thres", force_thres);
     ROS_WARN("[%s] Set force_thres with default value: %f", ros::this_node::getName().c_str(), force_thres);
   }
+  */
   joint_names.resize(6);
   joint_names[0] = "shoulder_pan_joint"; 
   joint_names[1] = "shoulder_lift_joint";
@@ -57,37 +61,27 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   joint_names[3] = "wrist1_joint";
   joint_names[4] = "wrist2_joint";
   joint_names[5] = "wrist3_joint";
-  /*
-  if(!sim){
-    std::string host_ip; 
-    nh_.getParam("/ur_driver/robot_ip_address", host_ip);
-    ur_control.setHost(host_ip);
-  }
-  */
   // Show parameter information
   ROS_INFO("*********************************************************************************");
   ROS_INFO("[%s] Tool length: %f", ros::this_node::getName().c_str(), tool_length);
+  ROS_INFO("[%s] Action server name: %s", ros::this_node::getName().c_str(), action_server_name.c_str());
   ROS_INFO("[%s] Wrist 1 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist1_lower_bound, wrist1_upper_bound);
   ROS_INFO("[%s] Wrist 2 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist2_lower_bound, wrist2_upper_bound);
   ROS_INFO("[%s] Wrist 3 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist3_lower_bound, wrist3_upper_bound);
-  ROS_INFO("[%s] Force thres: %f", ros::this_node::getName().c_str(), force_thres);
+  //ROS_INFO("[%s] Force thres: %f", ros::this_node::getName().c_str(), force_thres);
   ROS_INFO("*********************************************************************************");
   // Tell the action client that we want to spin a thread by default
   traj_client = new TrajClient(action_server_name, true);
   // Wait for action server to come up
   while (!traj_client->waitForServer(ros::Duration(5.0)))
-    ROS_INFO("Waiting for the joint_trajectory_action server");
+    ROS_INFO("[%s] Waiting for the %s server", ros::this_node::getName().c_str(), action_server_name.c_str());
   ROS_INFO("[%s] Action server connected!", ros::this_node::getName().c_str());
-  checkParameterTimer = pnh_.createTimer(ros::Duration(1.0), &RobotArm::TimerCallback, this);
+  // Timer
+  checkParameterTimer = pnh_.createTimer(ros::Duration(1.0f), &RobotArm::TimerCallback, this);
+  pubPoseTimer = pnh_.createTimer(ros::Duration(0.002f), &RobotArm::pubPoseCallback, this);
+  
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   trajectory_msgs::JointTrajectory &l = path.trajectory;
-  /*
-  t.joint_names.resize(6); l.joint_names.resize(6);
-  for(int i=0; i<6; ++i){
-    t.joint_names[i] = joint_names[conversion[i]];
-    l.joint_names[i] = joint_names[conversion[i]];
-  }
-  */
   t.points.resize(2); l.points.resize(NUMBEROFPOINTS+1);
   for(int i=0; i<2; ++i){
     t.points[i].positions.resize(6);
@@ -124,6 +118,7 @@ bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_ope
   return true;
 }
 
+// TODO
 bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res){
   ROS_INFO("[%s] Receive new straight line goal: %f %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                                         req.target_pose.position.x, 
@@ -266,8 +261,9 @@ bool RobotArm::StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty
   return true;
 }
 
-void RobotArm::PerformFK(double *T){
+void RobotArm::pubPoseCallback(const ros::TimerEvent &event){
   if(!new_topic) return;
+  double T[16];
   ur_kinematics::forward(joint, T);
   geometry_msgs::PoseStamped ps;
   ps.header.stamp = ros::Time::now();

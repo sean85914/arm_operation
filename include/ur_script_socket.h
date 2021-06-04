@@ -46,7 +46,7 @@ class URScriptSocket{
       }
       int err = connect(dashBoardSocket, (struct sockaddr *)&socket_info, sizeof(socket_info));
       if(err==-1){
-        printf("\033[1;31m[%s] Connecgtion fail.\033[0m\n", info.c_str());
+        printf("\033[1;31m[%s] Connection fail.\033[0m\n", info.c_str());
       }else{
         printf("[%s, %s] Socket connect to %s:%d\033[0m\n", get_unix_time().c_str(), info.c_str(), host.c_str(), port);
       } recv(dashBoardSocket, message, 512, 0);

@@ -68,7 +68,7 @@ class RobotArm {
   double wrist1_upper_bound, wrist1_lower_bound;
   double wrist2_upper_bound, wrist2_lower_bound;
   double wrist3_upper_bound, wrist3_lower_bound;
-  double force_thres;// Higher than this value should cancel the goal
+  double force_thres;// Higher than this value should cancel the goal DEPRECATED
   bool is_send_goal;
   bool is_robot_enable;
   bool initialized;
@@ -103,6 +103,7 @@ class RobotArm {
   control_msgs::FollowJointTrajectoryGoal path;
   // Timer
   ros::Timer checkParameterTimer;
+  ros::Timer pubPoseTimer;
   // Private Functions
   /* 
    *  Convert input joint angle to branch [-pi, pi]
@@ -128,6 +129,10 @@ class RobotArm {
    * Timer callback, to check if threshold parameter is changed
    */
   void TimerCallback(const ros::TimerEvent &event);
+  /*
+   * Timer callback, perform forward kinematics and publish current pose (ee_link w.r.t. base_link)
+   */
+  void pubPoseCallback(const ros::TimerEvent &event);
   /*
    *  Convert pose to transformation matrix
    *  Input:
@@ -212,14 +217,6 @@ class RobotArm {
    bool UnlockProtectiveStopService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
    bool StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
    void PoseToDH(geometry_msgs::Pose pose, double *T);
-  /*
-   *  Perform forward kinematics and publish current pose (ee_link w.r.t. base_link)
-   *  Will use joints (with order 1, 2, 3, 4, 5, 6) from `/joint_states`
-   *  Input: 
-   *    double *T: output placeholder
-   *  Outpit: None
-   */
-  void PerformFK(double *T);
 };
 
 #endif

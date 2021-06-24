@@ -1,5 +1,12 @@
 /*
+ *  CHANGELOG
+ *  2021.06.24 Add Moveit function
+ */
+
+/*
  *  Some useful services to control UR robot
+ *  Publish topics:
+ *    ~det: current determinant of robot jacobian
  *  Subscribed topics:
  *    ~joint_states: joint state of universal robot
  *    /ur_driver/robot_mode_state: state of robot
@@ -35,6 +42,7 @@
 #include <Eigen/Dense>
 #include <ur_kin.h>
 // MSG
+#include <std_msgs/Float32.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Quaternion.h>
@@ -48,6 +56,10 @@
 #include <arm_operation/target_pose.h>
 #include <arm_operation/joint_pose.h>
 #include <tf/transform_datatypes.h>
+// Moveit
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_model/robot_model.h>
+#include <moveit/robot_state/robot_state.h>
 // Self-defined
 #include "ur_script_socket.h"
 
@@ -76,15 +88,19 @@ class RobotArm {
   bool wrist2_collision;
   bool wrist3_collision;
   bool new_topic;
+  std::string tf_prefix;
   std::string action_server_name;
   std::vector<int> conversion;
   std::vector<std::string> joint_names;
   URScriptSocket ur_control;
+  std_msgs::Float32 det_msg;
+  Eigen::Vector3d reference_position;
   // ROS
   // Node handle
   ros::NodeHandle nh_, pnh_;
   // Publisher 
   ros::Publisher pub_pose;
+  ros::Publisher pub_det;
   // Subscriber
   ros::Subscriber sub_joint_state;
   ros::Subscriber sub_robot_state;
@@ -104,6 +120,11 @@ class RobotArm {
   // Timer
   ros::Timer checkParameterTimer;
   ros::Timer pubPoseTimer;
+  // Moveit
+  robot_model_loader::RobotModelLoader robot_model_loader;
+  robot_model::RobotModelPtr kinematic_model;
+  robot_state::RobotStatePtr kinematic_state;
+  robot_state::JointModelGroup* joint_model_group;
   // Private Functions
   /* 
    *  Convert input joint angle to branch [-pi, pi]
@@ -132,7 +153,8 @@ class RobotArm {
   /*
    * Timer callback, perform forward kinematics and publish current pose (ee_link w.r.t. base_link)
    */
-  void pubPoseCallback(const ros::TimerEvent &event);
+  // DEPRECATED
+  //void pubPoseCallback(const ros::TimerEvent &event);
   /*
    *  Convert pose to transformation matrix
    *  Input:

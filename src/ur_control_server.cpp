@@ -18,9 +18,10 @@ inline bool endswith(const std::string inStr, const std::string key){
 
 // Public functions
 RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): 
-  nh_(nh), pnh_(pnh), num_sols(1), is_robot_enable(true), is_send_goal(false), initialized(false), new_topic(false){
+  nh_(nh), pnh_(pnh), num_sols(1), is_robot_enable(true), is_send_goal(false), initialized(false), new_topic(false), reference_position(0.0, 0.0, 0.0){
   // Publisher 
   pub_pose = pnh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
+  pub_det = pnh_.advertise<std_msgs::Float32>("det", 100);
   // Subscriber
   sub_joint_state = pnh_.subscribe("joint_states", 100, &RobotArm::JointStateCallback, this);
   sub_robot_state = pnh_.subscribe("/ur_driver/robot_mode_state", 1, &RobotArm::RobotModeStateCallback, this);
@@ -35,6 +36,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   stop_program_srv = pnh_.advertiseService("ur_control/stop_program", &RobotArm::StopProgramService, this);
   */
   // Parameters
+  if(!nh_.getParam("tf_prefix", tf_prefix)) tf_prefix = "";
   if(!pnh_.getParam("tool_length", tool_length)) tool_length = 0.0;
   // Wrist1 default bound [-240, -30]
   if(!pnh_.getParam("wrist1_upper_bound", wrist1_upper_bound)) wrist1_upper_bound = deg2rad(-30);
@@ -47,6 +49,23 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   if(!pnh_.getParam("wrist3_lower_bound", wrist3_lower_bound)) wrist3_lower_bound = deg2rad(-220);
   if(!pnh_.getParam("action_server_name", action_server_name))
     action_server_name = "/follow_joint_trajectory";
+  // Moveit
+  robot_model_loader = robot_model_loader::RobotModelLoader("robot_description");
+  kinematic_model  = robot_model_loader.getModel();
+  ROS_INFO("Model frame: %s", kinematic_model->getModelFrame().c_str());
+  kinematic_state = robot_state::RobotStatePtr(new robot_state::RobotState(kinematic_model));
+  std::vector<std::string> groups = kinematic_model->getJointModelGroupNames();
+  int group_idx = -1;
+  for(int i=0; i<groups.size(); ++i){
+    if(kinematic_model->getJointModelGroup(groups[i])->getVariableNames().size()!=0)
+      group_idx = i;
+  }
+  joint_model_group = kinematic_model->getJointModelGroup(groups[group_idx]);
+  joint_names = joint_model_group->getVariableNames();
+  ROS_INFO("[%s] Joint name inside [%s]", ros::this_node::getName().c_str(), groups[group_idx].c_str());
+  for(int i=0; i<joint_names.size(); ++i)
+    std::cout << "\t" << joint_names[i] << "\n";
+  
   /*
   if(!pnh_.getParam("force_thres", force_thres)){
     force_thres = 100.0f;
@@ -54,13 +73,6 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
     ROS_WARN("[%s] Set force_thres with default value: %f", ros::this_node::getName().c_str(), force_thres);
   }
   */
-  joint_names.resize(6);
-  joint_names[0] = "shoulder_pan_joint"; 
-  joint_names[1] = "shoulder_lift_joint";
-  joint_names[2] = "elbow_joint";
-  joint_names[3] = "wrist1_joint";
-  joint_names[4] = "wrist2_joint";
-  joint_names[5] = "wrist3_joint";
   // Show parameter information
   ROS_INFO("*********************************************************************************");
   ROS_INFO("[%s] Tool length: %f", ros::this_node::getName().c_str(), tool_length);
@@ -78,7 +90,6 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   ROS_INFO("[%s] Action server connected!", ros::this_node::getName().c_str());
   // Timer
   checkParameterTimer = pnh_.createTimer(ros::Duration(1.0f), &RobotArm::TimerCallback, this);
-  pubPoseTimer = pnh_.createTimer(ros::Duration(0.001f), &RobotArm::pubPoseCallback, this);
   
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   trajectory_msgs::JointTrajectory &l = path.trajectory;
@@ -98,22 +109,34 @@ RobotArm::~RobotArm(){
 }
 
 bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res){
+  double qx = req.target_pose.orientation.x, 
+         qy = req.target_pose.orientation.y, 
+         qz = req.target_pose.orientation.z, 
+         qw = req.target_pose.orientation.w;
+  if(std::sqrt(qx*qx+qy*qy+qz*qz+qw*qw) < 1e-3){
+    ROS_WARN("[%s] Receive invalid quaternion, abort request...", ros::this_node::getName().c_str());
+    res.plan_result = "Invalid target pose";
+    return true;
+  }
   ROS_INFO("[%s] Receive new pose goal: %f %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                                req.target_pose.position.x,
                                                                req.target_pose.position.y,
                                                                req.target_pose.position.z,
-                                                               req.target_pose.orientation.x,
-                                                               req.target_pose.orientation.y, 
-                                                               req.target_pose.orientation.z, 
-                                                               req.target_pose.orientation.w);
+                                                               qx, qy, qz, qw);
   ROS_INFO("[%s] Joint state now: %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                       joint[0], joint[1], joint[2], joint[3], joint[4], joint[5]);
+  if(!initialized){
+    ROS_WARN("[%s] Robot not ready yet", ros::this_node::getName().c_str());
+    res.plan_result = "robot_not_ready";
+    return true;
+  }
   if(!is_robot_enable){
     ROS_WARN("Robot is emergency/protective stop, abort request...");
     res.plan_result = "robot_disable"; return true;
   }
-  StartTrajectory(ArmToDesiredPoseTrajectory(req.target_pose, req.factor));
+  auto traj = ArmToDesiredPoseTrajectory(req.target_pose, req.factor);
   if(num_sols == 0) {res.plan_result = "fail_to_find_solution"; return true;}
+  StartTrajectory(traj);
   res.plan_result = "find_one_feasible_solution";
   return true;
 }
@@ -214,6 +237,11 @@ bool RobotArm::GotoJointPoseService(arm_operation::joint_pose::Request  &req, ar
   }
   ROS_INFO("[%s] Receive new joint pose request:\n\
 Totally %d waypoints\n%s", ros::this_node::getName().c_str(), (int)req.joints.size(), ss.str().c_str());
+  if(!initialized){
+    ROS_WARN("[%s] Robot not ready yet", ros::this_node::getName().c_str());
+    res.plan_result = "robot_not_ready";
+    return true;
+  }
   if(!is_robot_enable){
     ROS_WARN("Robot is emergency/protective stop, abort request...");
     res.plan_result = "robot_disable"; return true;
@@ -261,6 +289,9 @@ bool RobotArm::StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty
   return true;
 }
 
+
+// DEPRECATED
+/*
 void RobotArm::pubPoseCallback(const ros::TimerEvent &event){
   if(!new_topic) return;
   double T[16];
@@ -281,6 +312,7 @@ void RobotArm::pubPoseCallback(const ros::TimerEvent &event){
   pub_pose.publish(ps);
   new_topic = false;
 }
+*/
 
 // Private functions
 
@@ -312,6 +344,32 @@ void RobotArm::JointStateCallback(const sensor_msgs::JointState &msg){
     joint[i] = msg.position[conversion[i]];
     new_topic = true;
   }
+  // Compute determinant
+  kinematic_state->setJointGroupPositions(joint_model_group, joint);
+  Eigen::MatrixXd jacobian;
+  kinematic_state->getJacobian(joint_model_group,
+                               kinematic_state->getLinkModel(joint_model_group->getLinkModelNames().back()),
+                               reference_position, jacobian);
+  std_msgs::Float32 out_msg;
+  out_msg.data = jacobian.determinant();
+  pub_det.publish(out_msg);
+  // Forward kinematics
+  double T[16];
+  ur_kinematics::forward(joint, T);
+  geometry_msgs::PoseStamped ps;
+  ps.header.stamp = ros::Time::now();
+  ps.header.frame_id = tf_prefix + "base_link";
+  tf::Matrix3x3 mat(T[0], T[1], T[2], T[4], T[5], T[6], T[8], T[9], T[10]);
+  tf::Quaternion quat;
+  mat.getRotation(quat);
+  ps.pose.position.x = T[3];
+  ps.pose.position.y = T[7];
+  ps.pose.position.z = T[11];
+  ps.pose.orientation.x = quat.getX();
+  ps.pose.orientation.y = quat.getY();
+  ps.pose.orientation.z = quat.getZ();
+  ps.pose.orientation.w = quat.getW();
+  pub_pose.publish(ps);
 }
 
 void RobotArm::RobotModeStateCallback(const ur_msgs::RobotModeDataMsg &msg){
@@ -382,11 +440,17 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
     T[i*4+3] -= tool_length*T[i*4];
   double q_sols[8*6], min = 1e6, dist = 0;
   int sols = ur_kinematics::inverse(T, q_sols), index = -1;
+  int valid_sols = sols;
   for (int i = 0; i < sols; ++i) {
+    // Check if NAN solution
+    if(std::isnan(q_sols[i*6])){
+      valid_sols-=1;
+      continue;
+    }
     // Preprocess joint angle to -pi ~ pi
     for (int j = 0; j < 6; ++j) q_sols[i*6 + j] = validAngle(q_sols[i*6 + j]); 
-    for (int j = 0; j < 6; ++j) printf("%f ", q_sols[i*6+j]);
-    printf("\n");
+    //for (int j = 0; j < 6; ++j) printf("%f ", q_sols[i*6+j]);
+    //printf("\n");
     q_sols[i*6] = makeMinorRotate(joint[0], q_sols[i*6]);
     // Convert wrist joints to available range, or set wristX_collision to true if collision happen
     wrist1_collision = wrist_check_bound(q_sols[i*6+3], wrist1_upper_bound, wrist1_lower_bound); 
@@ -403,9 +467,13 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
       min = dist;
       index = i;
     } dist = 0; 
-  } if(index == -1) return 0; // All solutions will self-collision
+  } 
+  if(index == -1 and valid_sols!=0) {
+    printf("PerformIK wrist collsion\n"); 
+    return 0; // All valid solutions will self-collision
+  }
   for(int i=0; i<6; ++i) sol[i] = q_sols[index*6+i];
-  return (num_sols = sols);
+  return (num_sols = valid_sols);
 }
 
 int RobotArm::PerformIKWristMotion(geometry_msgs::Pose target_pose, double *sol){
@@ -466,6 +534,7 @@ geometry_msgs::Pose RobotArm::getCurrentTCPPose(void){
   return pose_now;
 }
 
+// TODO: Combine with Jacobian to compute reasonable time?
 double RobotArm::calculate_time(const double *now, const double *togo, double factor){
   double time;
   // The less the factor, the faster the move
@@ -493,6 +562,7 @@ inline void RobotArm::StartTrajectory(control_msgs::FollowJointTrajectoryGoal go
 }
 
 control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geometry_msgs::Pose pose, double factor){
+  // Check if given quaternion is invalid
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   if(t.joint_names.size()==0){
     t.joint_names.resize(6);
@@ -500,24 +570,25 @@ control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geo
       t.joint_names[i] = joint_names[conversion[i]];
   }
   // Get closest joint space solution
-  double sol[6] = {0}; ROS_INFO("[%s] Joints to go solve from IK: ", ros::this_node::getName().c_str());
-  // If not solutions, assign current joint angle to sol
+  double sol[6] = {0};
   if(!PerformIK(pose, sol)) {
-    ROS_WARN("Cannot find IK solution!");
-    for (int i = 0; i < 6; ++i) sol[i] = joint[i];
-  } 
-  for (int i = 0; i < 6; ++i) {
-    printf("%f ", sol[i]);
-    t.points[0].positions[i] = joint[conversion[i]];
-    t.points[1].positions[i] = sol[conversion[i]]; 
-    t.points[0].velocities[i] = 
-    t.points[1].velocities[i] = 0;
-  } printf("\n");
-  t.points[0].time_from_start = ros::Duration(0);
-  t.points[1].time_from_start = ros::Duration(calculate_time(joint, sol, factor));
-  ROS_INFO("[%s] Execution time: %f seconds", ros::this_node::getName().c_str(), calculate_time(joint, sol, factor));
-  for(int i=0; i<6; ++i)
-    printf("%s Start: %f Target: %f\n", t.joint_names[i].c_str(), t.points[0].positions[i], t.points[1].positions[i]);
+    ROS_WARN("[%s] Cannot find IK solution!", ros::this_node::getName().c_str());
+  }else{
+    for (int i = 0; i < 6; ++i) {
+      t.points[0].positions[i] = joint[conversion[i]];
+      t.points[1].positions[i] = sol[conversion[i]]; 
+      t.points[0].velocities[i] = 
+      t.points[1].velocities[i] = 0.0;
+    }
+    t.points[0].time_from_start = ros::Duration(0.01);
+    double exeute_time = calculate_time(joint, sol, factor);
+    t.points[1].time_from_start = ros::Duration(exeute_time);
+    ROS_INFO("[%s] Execution time: %f seconds", ros::this_node::getName().c_str(), exeute_time);
+    /*
+    for(int i=0; i<6; ++i)
+      printf("%s Start: %f Target: %f\n", t.joint_names[i].c_str(), t.points[0].positions[i], t.points[1].positions[i]);
+    */
+  }
   
   return goal;
 }

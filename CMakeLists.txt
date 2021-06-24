@@ -26,6 +26,8 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules
   actionlib
   actionlib_msgs
   message_generation
+  moveit_core
+  moveit_ros_planning
 )
 find_package(Eigen REQUIRED)
 find_package(Qt5 COMPONENTS Widgets Gui Core REQUIRED)

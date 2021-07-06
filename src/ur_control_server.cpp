@@ -4,10 +4,14 @@ inline double makeMinorRotate(const double joint_now, const double joint_togo){
   bool sign = (joint_togo>0.0f);
   double dis_1 = std::abs(joint_now-joint_togo);
   double dis_2 = std::abs(joint_now-(joint_togo-(sign?2*M_PI:-2*M_PI)));
-  // Choose small one
+  // Choose smaller one
   if(dis_1<dis_2) return joint_togo;
   else return (joint_togo-(sign?2*M_PI:-2*M_PI));
 }
+
+/*
+ * Check if `inStr` is ends with `key`, same as `str(inStr).endswith(key)` in Python
+ */
 
 inline bool endswith(const std::string inStr, const std::string key){
   if(inStr.length()>=key.length())
@@ -15,26 +19,43 @@ inline bool endswith(const std::string inStr, const std::string key){
   else
     return false;
 }
+/*
+ * Check if given quaternion is valid, i.e., if the norm is smaller than a threshold
+ */
+inline bool isValidQuat(const geometry_msgs::Quaternion quat){
+  double qx = quat.x, 
+         qy = quat.y, 
+         qz = quat.z, 
+         qw = quat.w;
+  return !(std::sqrt(qx*qx+qy*qy+qz*qz+qw*qw)<1e-3);
+}
+
+/* 
+ *  Convert input joint angle to branch [-pi, pi]
+ *  Input:
+ *    double angle: input joint angle
+ *  Output:
+ *    double: convert angle to branch [-pi, pi]
+ */
+inline double validAngle(double angle){
+  if(abs(angle) > 2*M_PI) angle = fmod(angle, 2*M_PI);
+  if(angle > M_PI) angle -= 2*M_PI;
+  else if(angle < -M_PI) angle += 2*M_PI;
+  return angle;
+}
 
 // Public functions
 RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): 
-  nh_(nh), pnh_(pnh), num_sols(1), is_robot_enable(true), is_send_goal(false), initialized(false), new_topic(false), reference_position(0.0, 0.0, 0.0){
+  nh_(nh), pnh_(pnh), num_sols(1), is_send_goal(false), initialized(false), reference_position(0.0, 0.0, 0.0){
   // Publisher 
   pub_pose = pnh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
   pub_det = pnh_.advertise<std_msgs::Float32>("det", 100);
   // Subscriber
   sub_joint_state = pnh_.subscribe("joint_states", 100, &RobotArm::JointStateCallback, this);
-  sub_robot_state = pnh_.subscribe("/ur_driver/robot_mode_state", 1, &RobotArm::RobotModeStateCallback, this);
-  sub_wrench      = pnh_.subscribe("/wrench", 1, &RobotArm::RobotWrenchCallback, this);
   // Service server
   goto_pose_srv = pnh_.advertiseService("ur_control/goto_pose", &RobotArm::GotoPoseService, this);
   go_straight_srv = pnh_.advertiseService("ur_control/go_straight", &RobotArm::GoStraightLineService, this);
   goto_joint_pose_srv = pnh_.advertiseService("ur_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
-  /*
-  robot_state_srv = pnh_.advertiseService("ur_control/get_robot_state", &RobotArm::GetRobotModeStateService, this);
-  unlock_protective_stop_srv = pnh_.advertiseService("ur_control/unlock_protective", &RobotArm::UnlockProtectiveStopService, this);
-  stop_program_srv = pnh_.advertiseService("ur_control/stop_program", &RobotArm::StopProgramService, this);
-  */
   // Parameters
   if(!nh_.getParam("tf_prefix", tf_prefix)) tf_prefix = "";
   if(!pnh_.getParam("tool_length", tool_length)) tool_length = 0.0;
@@ -62,17 +83,9 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   }
   joint_model_group = kinematic_model->getJointModelGroup(groups[group_idx]);
   joint_names = joint_model_group->getVariableNames();
-  ROS_INFO("[%s] Joint name inside [%s]", ros::this_node::getName().c_str(), groups[group_idx].c_str());
+  ROS_INFO("[%s] Joint names inside [%s]", ros::this_node::getName().c_str(), groups[group_idx].c_str());
   for(int i=0; i<joint_names.size(); ++i)
     std::cout << "\t" << joint_names[i] << "\n";
-  
-  /*
-  if(!pnh_.getParam("force_thres", force_thres)){
-    force_thres = 100.0f;
-    pnh_.setParam("force_thres", force_thres);
-    ROS_WARN("[%s] Set force_thres with default value: %f", ros::this_node::getName().c_str(), force_thres);
-  }
-  */
   // Show parameter information
   ROS_INFO("*********************************************************************************");
   ROS_INFO("[%s] Tool length: %f", ros::this_node::getName().c_str(), tool_length);
@@ -80,7 +93,6 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   ROS_INFO("[%s] Wrist 1 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist1_lower_bound, wrist1_upper_bound);
   ROS_INFO("[%s] Wrist 2 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist2_lower_bound, wrist2_upper_bound);
   ROS_INFO("[%s] Wrist 3 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist3_lower_bound, wrist3_upper_bound);
-  //ROS_INFO("[%s] Force thres: %f", ros::this_node::getName().c_str(), force_thres);
   ROS_INFO("*********************************************************************************");
   // Tell the action client that we want to spin a thread by default
   traj_client = new TrajClient(action_server_name, true);
@@ -88,9 +100,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   while (!traj_client->waitForServer(ros::Duration(5.0)))
     ROS_INFO("[%s] Waiting for the %s server", ros::this_node::getName().c_str(), action_server_name.c_str());
   ROS_INFO("[%s] Action server connected!", ros::this_node::getName().c_str());
-  // Timer
-  checkParameterTimer = pnh_.createTimer(ros::Duration(1.0f), &RobotArm::TimerCallback, this);
-  
+  /*
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
   trajectory_msgs::JointTrajectory &l = path.trajectory;
   t.points.resize(2); l.points.resize(NUMBEROFPOINTS+1);
@@ -102,18 +112,21 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
     l.points[i].positions.resize(6);
     l.points[i].velocities.resize(6);
   }
+  */
 }
 
 RobotArm::~RobotArm(){
   delete traj_client;
+  ROS_WARN("[%s] Node shutdown", ros::this_node::getName().c_str());
 }
 
 bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res){
-  double qx = req.target_pose.orientation.x, 
-         qy = req.target_pose.orientation.y, 
-         qz = req.target_pose.orientation.z, 
-         qw = req.target_pose.orientation.w;
-  if(std::sqrt(qx*qx+qy*qy+qz*qz+qw*qw) < 1e-3){
+  if(!initialized){
+    ROS_WARN("[%s] Robot not ready yet", ros::this_node::getName().c_str());
+    res.plan_result = "robot_not_ready";
+    return true;
+  }
+  if(!isValidQuat(req.target_pose.orientation)){
     ROS_WARN("[%s] Receive invalid quaternion, abort request...", ros::this_node::getName().c_str());
     res.plan_result = "Invalid target pose";
     return true;
@@ -122,18 +135,12 @@ bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_ope
                                                                req.target_pose.position.x,
                                                                req.target_pose.position.y,
                                                                req.target_pose.position.z,
-                                                               qx, qy, qz, qw);
+                                                               req.target_pose.orientation.x,
+                                                               req.target_pose.orientation.y, 
+                                                               req.target_pose.orientation.z, 
+                                                               req.target_pose.orientation.w);
   ROS_INFO("[%s] Joint state now: %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                       joint[0], joint[1], joint[2], joint[3], joint[4], joint[5]);
-  if(!initialized){
-    ROS_WARN("[%s] Robot not ready yet", ros::this_node::getName().c_str());
-    res.plan_result = "robot_not_ready";
-    return true;
-  }
-  if(!is_robot_enable){
-    ROS_WARN("Robot is emergency/protective stop, abort request...");
-    res.plan_result = "robot_disable"; return true;
-  }
   auto traj = ArmToDesiredPoseTrajectory(req.target_pose, req.factor);
   if(num_sols == 0) {res.plan_result = "fail_to_find_solution"; return true;}
   StartTrajectory(traj);
@@ -151,17 +158,13 @@ bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, a
                                                                         req.target_pose.orientation.y,
                                                                         req.target_pose.orientation.z,
                                                                         req.target_pose.orientation.w);
-  if(!is_robot_enable){
-    ROS_WARN("Robot is emergency/protective stop, abort request...");
-    res.plan_result = "robot_disable"; return true;
-  }
   trajectory_msgs::JointTrajectory &l = path.trajectory;
   if(l.joint_names.size()==0){
     l.joint_names.resize(6);
     for(int i=0; i<6; ++i)
       l.joint_names[i] = joint_names[conversion[i]];
   }
-  geometry_msgs::Pose pose_now = getCurrentTCPPose();
+  geometry_msgs::Pose pose_now = curr_tcp_pose;
   double waypoint_sol_[NUMBEROFPOINTS * 6] = {0}, temp[6] = {0};
   tf::Quaternion q(pose_now.orientation.x, 
                    pose_now.orientation.y,
@@ -242,10 +245,6 @@ Totally %d waypoints\n%s", ros::this_node::getName().c_str(), (int)req.joints.si
     res.plan_result = "robot_not_ready";
     return true;
   }
-  if(!is_robot_enable){
-    ROS_WARN("Robot is emergency/protective stop, abort request...");
-    res.plan_result = "robot_disable"; return true;
-  }
   control_msgs::FollowJointTrajectoryGoal tmp;
   trajectory_msgs::JointTrajectory &t = tmp.trajectory;
   t.joint_names.resize(6);
@@ -253,14 +252,15 @@ Totally %d waypoints\n%s", ros::this_node::getName().c_str(), (int)req.joints.si
     t.joint_names[i] = joint_names[conversion[i]];
   t.points.resize(req.joints.size()+1);
   for(int i=0; i<=req.joints.size(); ++i){
-    t.points[i].positions.resize(6);
-    t.points[i].velocities.resize(6);
+    //t.points[i].positions.resize(6);
+    //t.points[i].velocities.resize(6);
     for(int j=0; j<6; ++j){
+      t.points[i].velocities.push_back(0.0);
       if(i==0){
-        t.points[i].positions[j] = joint[conversion[j]];
-        t.points[i].time_from_start = ros::Duration(0);
+        t.points[i].positions.push_back(joint[conversion[j]]);
+        t.points[i].time_from_start = ros::Duration(0.01);
       } else{
-        t.points[i].positions[j] = req.joints[i-1].joint_value[conversion[j]];
+        t.points[i].positions.push_back(req.joints[i-1].joint_value[conversion[j]]);
         double tmp_arr[6];
         std::copy(req.joints[i-1].joint_value.begin(),
                   req.joints[i-1].joint_value.end(), tmp_arr);
@@ -269,60 +269,11 @@ Totally %d waypoints\n%s", ros::this_node::getName().c_str(), (int)req.joints.si
     }
   }
   StartTrajectory(tmp);
+  res.plan_result = "done";
   return true;
 }
-
-bool RobotArm::GetRobotModeStateService(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res){
-  res.success = is_robot_enable;
-  res.message = is_robot_enable?"robot enable":"robot disable";
-  ROS_INFO("%s", res.message.c_str());
-  return true;
-}
-
-bool RobotArm::UnlockProtectiveStopService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
-  ur_control.unlock_protective_stop();
-  return true;
-}
-
-bool RobotArm::StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
-  ur_control.stop_program();
-  return true;
-}
-
-
-// DEPRECATED
-/*
-void RobotArm::pubPoseCallback(const ros::TimerEvent &event){
-  if(!new_topic) return;
-  double T[16];
-  ur_kinematics::forward(joint, T);
-  geometry_msgs::PoseStamped ps;
-  ps.header.stamp = ros::Time::now();
-  ps.header.frame_id = "base_link";
-  tf::Matrix3x3 mat(T[0], T[1], T[2], T[4], T[5], T[6], T[8], T[9], T[10]);
-  tf::Quaternion quat;
-  mat.getRotation(quat);
-  ps.pose.position.x = T[3];
-  ps.pose.position.y = T[7];
-  ps.pose.position.z = T[11];
-  ps.pose.orientation.x = quat.getX();
-  ps.pose.orientation.y = quat.getY();
-  ps.pose.orientation.z = quat.getZ();
-  ps.pose.orientation.w = quat.getW();
-  pub_pose.publish(ps);
-  new_topic = false;
-}
-*/
 
 // Private functions
-
-inline double RobotArm::validAngle(double angle){
-  if(abs(angle) > 2*M_PI) angle = fmod(angle, 2*M_PI);
-  if(angle > M_PI) angle -= 2*M_PI;
-  else if(angle < -M_PI) angle += 2*M_PI;
-  return angle;
-}
-
 void RobotArm::JointStateCallback(const sensor_msgs::JointState &msg){
   // Check incoming joint order
   if(!initialized){
@@ -340,10 +291,8 @@ void RobotArm::JointStateCallback(const sensor_msgs::JointState &msg){
     printf("\n");
     initialized = true;
   }
-  for(int i=0; i<6; ++i){
+  for(int i=0; i<6; ++i)
     joint[i] = msg.position[conversion[i]];
-    new_topic = true;
-  }
   // Compute determinant
   kinematic_state->setJointGroupPositions(joint_model_group, joint);
   Eigen::MatrixXd jacobian;
@@ -355,81 +304,32 @@ void RobotArm::JointStateCallback(const sensor_msgs::JointState &msg){
   pub_det.publish(out_msg);
   // Forward kinematics
   double T[16];
-  ur_kinematics::forward(joint, T);
+  curr_tcp_pose = getCurrentTCPPose();
   geometry_msgs::PoseStamped ps;
   ps.header.stamp = ros::Time::now();
   ps.header.frame_id = tf_prefix + "base_link";
-  tf::Matrix3x3 mat(T[0], T[1], T[2], T[4], T[5], T[6], T[8], T[9], T[10]);
-  tf::Quaternion quat;
-  mat.getRotation(quat);
-  ps.pose.position.x = T[3];
-  ps.pose.position.y = T[7];
-  ps.pose.position.z = T[11];
-  ps.pose.orientation.x = quat.getX();
-  ps.pose.orientation.y = quat.getY();
-  ps.pose.orientation.z = quat.getZ();
-  ps.pose.orientation.w = quat.getW();
+  ps.pose = curr_tcp_pose;
   pub_pose.publish(ps);
 }
 
-void RobotArm::RobotModeStateCallback(const ur_msgs::RobotModeDataMsg &msg){
-  is_robot_enable = (!msg.is_emergency_stopped and !msg.is_protective_stopped);
-  if(!is_robot_enable){
-    ROS_WARN("%f | Robot is now disable.", force);
-  }
-}
-
-void RobotArm::RobotWrenchCallback(const geometry_msgs::WrenchStamped &msg){
-  bool should_shot; // Should not block in following `if` statement if already higher than force thres
-  double f_x = msg.wrench.force.x,
-         f_y = msg.wrench.force.y,
-         f_z = msg.wrench.force.z;
-  double past_force = force;
-  force = sqrt(f_x*f_x+f_y*f_y+f_z*f_z);
-  if(past_force<force_thres && force>=force_thres) should_shot = true;
-  else should_shot = false;
-  if(should_shot){
-    if(is_send_goal){
-      ROS_WARN("[%s] | %f | High flange force detected, stop program", ros::this_node::getName().c_str(), force);
-      traj_client->cancelGoal();
-      ur_control.stop_program();
-      is_send_goal = false;
-    }
-  }
-}
-
-void RobotArm::TimerCallback(const ros::TimerEvent &event){
-  double tmp;
-  pnh_.getParam("force_thres", tmp);
-  if(tmp!=force_thres){
-    ROS_INFO("[%s] force_thres set from %f to %f", ros::this_node::getName().c_str(), force_thres, tmp);
-    force_thres = tmp;
-  }
-}
-
 void RobotArm::PoseToDH(geometry_msgs::Pose pose, double *T){
-  double roll = 0, pitch = 0, yaw = 0;
-  geometry_msgs::Point &p = pose.position;
-  tf::Quaternion q;
-  tf::quaternionMsgToTF(pose.orientation, q);
-  tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
-  double sinr = sin(roll), cosr = cos(roll);
-  double sinp = sin(pitch), cosp = cos(pitch);
-  double siny = sin(yaw), cosy = cos(yaw);
-  // DH matrix, ZYX convention, see: https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix (Tait-Bryan, Z1Y2X3)
-  T[0] = cosy*cosp;
-  T[1] = cosy*sinp*sinr - cosr*siny;
-  T[2] = siny*sinr + cosy*cosr*sinp;
-  T[3] = p.x;
-  T[4] = cosp*siny;
-  T[5] = cosy*cosr + siny*sinp*sinr;
-  T[6] = cosr*siny*sinp - cosy*sinr;
-  T[7] = p.y;
-  T[8] = -sinp;
-  T[9] = cosp*sinr;
-  T[10] = cosp*cosr;
-  T[11] = p.z;
-  T[15] = 1;
+  double qx = pose.orientation.x,
+         qy = pose.orientation.y, 
+         qz = pose.orientation.z, 
+         qw = pose.orientation.w;
+  tf::Quaternion quat(qx, qy, qz, qw);
+  quat.normalize();
+  tf::Matrix3x3 mat(quat);
+  for(int row=0; row<3; ++row){
+    T[row*4] = mat[row].getX();
+    T[row*4+1] = mat[row].getY();
+    T[row*4+2] = mat[row].getZ();
+  }
+  T[3]  = pose.position.x; 
+  T[7]  = pose.position.y; 
+  T[11] = pose.position.z; 
+  T[15] = 1.0;
+  std::cout << "\n";
 }
 
 int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
@@ -439,8 +339,7 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
   for (int i = 0; i < 3; ++i)
     T[i*4+3] -= tool_length*T[i*4];
   double q_sols[8*6], min = 1e6, dist = 0;
-  int sols = ur_kinematics::inverse(T, q_sols), index = -1;
-  int valid_sols = sols;
+  int sols = ur_kinematics::inverse(T, q_sols), index = -1, valid_sols = sols;
   for (int i = 0; i < sols; ++i) {
     // Check if NAN solution
     if(std::isnan(q_sols[i*6])){
@@ -476,6 +375,7 @@ int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){
   return (num_sols = valid_sols);
 }
 
+// TODO
 int RobotArm::PerformIKWristMotion(geometry_msgs::Pose target_pose, double *sol){
   double T[16] = {0};
   PoseToDH(target_pose, T);
@@ -512,7 +412,6 @@ inline bool RobotArm::wrist_check_bound(double &joint, double upper, double lowe
 
 geometry_msgs::Pose RobotArm::getCurrentTCPPose(void){
   geometry_msgs::Pose pose_now;
-  ros::spinOnce(); // Update joint state
   double T[16] = {0};
   ur_kinematics::forward(joint, T);
   tf::Quaternion q;
@@ -562,32 +461,26 @@ inline void RobotArm::StartTrajectory(control_msgs::FollowJointTrajectoryGoal go
 }
 
 control_msgs::FollowJointTrajectoryGoal RobotArm::ArmToDesiredPoseTrajectory(geometry_msgs::Pose pose, double factor){
-  // Check if given quaternion is invalid
+  control_msgs::FollowJointTrajectoryGoal goal;
   trajectory_msgs::JointTrajectory &t = goal.trajectory;
-  if(t.joint_names.size()==0){
-    t.joint_names.resize(6);
-    for(int i=0; i<6; ++i)
-      t.joint_names[i] = joint_names[conversion[i]];
-  }
+  for(int i=0; i<6; ++i)
+    t.joint_names.push_back(joint_names[conversion[i]]);
+  t.points.resize(2);
   // Get closest joint space solution
   double sol[6] = {0};
   if(!PerformIK(pose, sol)) {
     ROS_WARN("[%s] Cannot find IK solution!", ros::this_node::getName().c_str());
   }else{
     for (int i = 0; i < 6; ++i) {
-      t.points[0].positions[i] = joint[conversion[i]];
-      t.points[1].positions[i] = sol[conversion[i]]; 
-      t.points[0].velocities[i] = 
-      t.points[1].velocities[i] = 0.0;
+      t.points[0].positions.push_back(joint[conversion[i]]);
+      t.points[1].positions.push_back(sol[conversion[i]]); 
+      t.points[0].velocities.push_back(0.0);
+      t.points[1].velocities.push_back(0.0);
     }
     t.points[0].time_from_start = ros::Duration(0.01);
     double exeute_time = calculate_time(joint, sol, factor);
     t.points[1].time_from_start = ros::Duration(exeute_time);
     ROS_INFO("[%s] Execution time: %f seconds", ros::this_node::getName().c_str(), exeute_time);
-    /*
-    for(int i=0; i<6; ++i)
-      printf("%s Start: %f Target: %f\n", t.joint_names[i].c_str(), t.points[0].positions[i], t.points[1].positions[i]);
-    */
   }
   
   return goal;

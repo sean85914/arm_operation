@@ -1,29 +1,24 @@
 /*
  *  CHANGELOG
  *  2021.06.24 Add Moveit function
+ *  2021.06.27 Remove subscribe to wrench and stop monitor robot state
  */
 
 /*
- *  Some useful services to control UR robot
+ *  Some useful services to control UR robot through follow joint trajectory action
  *  Publish topics:
  *    ~det: current determinant of robot jacobian
+ *    ~pose: tool pose w.r.t. base link coordinate
  *  Subscribed topics:
  *    ~joint_states: joint state of universal robot
- *    /ur_driver/robot_mode_state: state of robot
- *    /wrench: wrench of robot flange surface
  *  Action interface:
- *    /follow_joint_trajectory, if `sim` set to false
- *    /arm_controller/follow_joint_trajectory, if `sim` set to true
+ *    /follow_joint_trajectory, if `action_server_name` no given
  *  Services:
  *    ~ur5_control/goto_pose: move robot TCP to given target pose in Cartesian space
  *    ~ur5_control/go_straight: move robot TCP from current pose to target pose straightly
  *    ~ur5_control/goto_joint_pose: move robot to given joint space
- *    ~ur5_control/get_robot_state: get the state of the robot arm, i.e., whether it is emergency/protective stop
- *    ~ur5_control/unlock_protective: service to unlock protective stop
- *    ~ur5_control/stop_program: service to stop uploaded URScript program
  *  Parameters:
  *    ~tool_length: length from ee_link to tcp_link
- *    ~sim: true if using simulation
  *    ~prefix: joint name prefix
  *    ~wrist1_upper_bound: wrist 1 upper bound
  *    ~wrist1_lower_bound: wrist 1 lower bound
@@ -31,7 +26,7 @@
  *    ~wrist2_lower_bound: wrist 2 lower bound
  *    ~wrist3_upper_bound: wrist 3 upper bound
  *    ~wrist3_lower_bound: wrist 3 lower bound
- *    ~force_thres: threshold force flange force, can be changed at runtime
+ *    ~action_server_name: action server name to connect with
  */
 #ifndef UR_CONTROL_SERVER_H
 #define UR_CONTROL_SERVER_H
@@ -46,12 +41,8 @@
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Quaternion.h>
-#include <geometry_msgs/WrenchStamped.h>
 #include <sensor_msgs/JointState.h>
-#include <ur_msgs/RobotModeDataMsg.h>
 // SRV
-#include <std_srvs/Empty.h>
-#include <std_srvs/Trigger.h>
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <arm_operation/target_pose.h>
 #include <arm_operation/joint_pose.h>
@@ -60,13 +51,9 @@
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
-// Self-defined
-#include "ur_script_socket.h"
 
 #define deg2rad(x) (x*M_PI/180.0)
 #define NUMBEROFPOINTS 10
-// Make rotation more efficent
-inline double makeMinorRotate(const double joint_now, const double joint_togo);
 
 typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajClient;
 
@@ -75,26 +62,23 @@ class RobotArm {
   // Varaibles
   int num_sols;
   double joint[6];
-  double force;
   double tool_length;
   double wrist1_upper_bound, wrist1_lower_bound;
   double wrist2_upper_bound, wrist2_lower_bound;
   double wrist3_upper_bound, wrist3_lower_bound;
   double force_thres;// Higher than this value should cancel the goal DEPRECATED
   bool is_send_goal;
-  bool is_robot_enable;
   bool initialized;
   bool wrist1_collision;
   bool wrist2_collision;
   bool wrist3_collision;
-  bool new_topic;
   std::string tf_prefix;
   std::string action_server_name;
   std::vector<int> conversion;
   std::vector<std::string> joint_names;
-  URScriptSocket ur_control;
   std_msgs::Float32 det_msg;
   Eigen::Vector3d reference_position;
+  geometry_msgs::Pose curr_tcp_pose;
   // ROS
   // Node handle
   ros::NodeHandle nh_, pnh_;
@@ -109,52 +93,19 @@ class RobotArm {
   ros::ServiceServer goto_pose_srv;
   ros::ServiceServer go_straight_srv;
   ros::ServiceServer goto_joint_pose_srv;
-  ros::ServiceServer unlock_protective_stop_srv;
-  ros::ServiceServer stop_program_srv;
-  //ros::ServiceServer fast_rotate_srv;
-  //ros::ServiceServer flip_srv;
-  ros::ServiceServer robot_state_srv;
   TrajClient *traj_client;
-  control_msgs::FollowJointTrajectoryGoal goal; 
+  //control_msgs::FollowJointTrajectoryGoal goal; 
   control_msgs::FollowJointTrajectoryGoal path;
-  // Timer
-  ros::Timer checkParameterTimer;
-  ros::Timer pubPoseTimer;
   // Moveit
   robot_model_loader::RobotModelLoader robot_model_loader;
   robot_model::RobotModelPtr kinematic_model;
   robot_state::RobotStatePtr kinematic_state;
   robot_state::JointModelGroup* joint_model_group;
   // Private Functions
-  /* 
-   *  Convert input joint angle to branch [-pi, pi]
-   *  Input:
-   *    double angle: input joint angle
-   *  Output:
-   *    double: convert angle to branch [-pi, pi]
-   */
-  inline double validAngle(double angle);
   /*
    *  Subscriber callback, update joints' value
    */
   void JointStateCallback(const sensor_msgs::JointState &msg);
-  /*
-   *  Subscriber callback, update robot mode state
-   */
-  void RobotModeStateCallback(const ur_msgs::RobotModeDataMsg &msg);
-  /*
-   *  Subscriber callback, update robot flange surface force
-   */
-  void RobotWrenchCallback(const geometry_msgs::WrenchStamped &msg);
-  /*
-   * Timer callback, to check if threshold parameter is changed
-   */
-  void TimerCallback(const ros::TimerEvent &event);
-  /*
-   * Timer callback, perform forward kinematics and publish current pose (ee_link w.r.t. base_link)
-   */
-  // DEPRECATED
-  //void pubPoseCallback(const ros::TimerEvent &event);
   /*
    *  Convert pose to transformation matrix
    *  Input:
@@ -235,9 +186,6 @@ class RobotArm {
    bool GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GotoJointPoseService(arm_operation::joint_pose::Request &req, arm_operation::joint_pose::Response &res);
-   bool GetRobotModeStateService(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
-   bool UnlockProtectiveStopService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-   bool StopProgramService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
    void PoseToDH(geometry_msgs::Pose pose, double *T);
 };
 

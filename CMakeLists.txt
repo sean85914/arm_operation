@@ -76,6 +76,7 @@ add_service_files(
   FILES
   target_pose.srv
   joint_pose.srv
+  velocity_ctrl.srv
 )
 
 ## Generate actions in the 'action' folder

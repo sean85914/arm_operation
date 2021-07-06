@@ -1,0 +1,4 @@
+geometry_msgs/Twist twist
+std_msgs/Float32 duration
+---
+std_msgs/String plan_result

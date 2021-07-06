@@ -46,7 +46,7 @@ inline double validAngle(double angle){
 
 // Public functions
 RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh): 
-  nh_(nh), pnh_(pnh), num_sols(1), is_send_goal(false), initialized(false), reference_position(0.0, 0.0, 0.0){
+  nh_(nh), pnh_(pnh), num_sols(1), dt(0.1), is_send_goal(false), initialized(false), reference_position(0.0, 0.0, 0.0){
   // Publisher 
   pub_pose = pnh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
   pub_det = pnh_.advertise<std_msgs::Float32>("det", 100);
@@ -56,6 +56,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   goto_pose_srv = pnh_.advertiseService("ur_control/goto_pose", &RobotArm::GotoPoseService, this);
   go_straight_srv = pnh_.advertiseService("ur_control/go_straight", &RobotArm::GoStraightLineService, this);
   goto_joint_pose_srv = pnh_.advertiseService("ur_control/goto_joint_pose", &RobotArm::GotoJointPoseService, this);
+  vel_ctrl_srv = pnh_.advertiseService("ur_control/velocity_control", &RobotArm::VelocityControlService, this);
   // Parameters
   if(!nh_.getParam("tf_prefix", tf_prefix)) tf_prefix = "";
   if(!pnh_.getParam("tool_length", tool_length)) tool_length = 0.0;
@@ -77,7 +78,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   kinematic_state = robot_state::RobotStatePtr(new robot_state::RobotState(kinematic_model));
   std::vector<std::string> groups = kinematic_model->getJointModelGroupNames();
   int group_idx = -1;
-  for(int i=0; i<groups.size(); ++i){
+  for(int i=0; i<groups.size(); ++i){ // manipulator/endeffector
     if(kinematic_model->getJointModelGroup(groups[i])->getVariableNames().size()!=0)
       group_idx = i;
   }
@@ -100,19 +101,6 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
   while (!traj_client->waitForServer(ros::Duration(5.0)))
     ROS_INFO("[%s] Waiting for the %s server", ros::this_node::getName().c_str(), action_server_name.c_str());
   ROS_INFO("[%s] Action server connected!", ros::this_node::getName().c_str());
-  /*
-  trajectory_msgs::JointTrajectory &t = goal.trajectory;
-  trajectory_msgs::JointTrajectory &l = path.trajectory;
-  t.points.resize(2); l.points.resize(NUMBEROFPOINTS+1);
-  for(int i=0; i<2; ++i){
-    t.points[i].positions.resize(6);
-    t.points[i].velocities.resize(6);
-  } 
-  for(int i=0; i<NUMBEROFPOINTS+1; ++i) {
-    l.points[i].positions.resize(6);
-    l.points[i].velocities.resize(6);
-  }
-  */
 }
 
 RobotArm::~RobotArm(){
@@ -269,6 +257,68 @@ Totally %d waypoints\n%s", ros::this_node::getName().c_str(), (int)req.joints.si
     }
   }
   StartTrajectory(tmp);
+  res.plan_result = "done";
+  return true;
+}
+
+bool RobotArm::VelocityControlService(arm_operation::velocity_ctrl::Request &req, arm_operation::velocity_ctrl::Response &res){
+  double vx = req.twist.linear.x, 
+         vy = req.twist.linear.y, 
+         vz = req.twist.linear.z, 
+         wx = req.twist.angular.x, 
+         wy = req.twist.angular.y, 
+         wz = req.twist.angular.z, 
+         t = req.duration;
+  std::string frame = (req.frame?"ee_link":"base_link");
+  ROS_INFO("[%s] Received velocity control request: (%f, %f, %f, %f, %f, %f) in %f seconds w.r.t. %s", ros::this_node::getName().c_str(), vx, vy, vz, wx, wy, wz, t, frame.c_str());
+  if(t<dt){
+    ROS_WARN("[%s] Received duration less than control period (%f), ignore...", ros::this_node::getName().c_str(), dt);
+    res.plan_result = "request duration less than control period";
+    return true;
+  }
+  const int STEPS = t/dt;
+  control_msgs::FollowJointTrajectoryGoal goal;
+  trajectory_msgs::JointTrajectory &traj = goal.trajectory;
+  for(int i=0; i<6; ++i)
+    traj.joint_names.push_back(joint_names[conversion[i]]);
+  traj.points.resize(STEPS+1);
+  for(int i=0; i<6; ++i){
+    traj.points[0].positions.push_back(joint[i]);
+    traj.points[0].velocities.push_back(0.0);
+  }
+  traj.points[0].time_from_start = ros::Duration(0.0);
+  Eigen::VectorXd twist(6);
+  // Convert back to base_link coordinate if frame == 0 
+  if(!req.frame){
+    tf::Quaternion quat(curr_tcp_pose.orientation.x, 
+                        curr_tcp_pose.orientation.y, 
+                        curr_tcp_pose.orientation.z, 
+                        curr_tcp_pose.orientation.w);
+    tf::Matrix3x3 mat(quat);
+    tf::Vector3 vel_vec = mat.inverse() * tf::Vector3(vx, vy, vz), 
+                rot_vec = mat.inverse() * tf::Vector3(wx, wy, wz);
+    twist << vel_vec.getX(), vel_vec.getY(), vel_vec.getZ(), rot_vec.getX(), rot_vec.getY(), rot_vec.getZ();
+  } else
+    twist << vx, vy, vz, wx, wy, wz;
+  std::vector<std::vector<double>> joints;
+  joints.push_back(std::vector<double>(std::begin(joint), std::end(joint))); // put current joints as the first one
+  // Copy another one moveit object
+  robot_state::RobotStatePtr kinematic_state_ = kinematic_state; 
+  robot_state::JointModelGroup* joint_model_group_ = joint_model_group;
+  for(int i=0; i<STEPS; ++i){
+    kinematic_state_->setFromDiffIK(joint_model_group_, twist, joint_model_group->getLinkModelNames().back(), dt);
+    std::vector<double> _joint;
+    kinematic_state_->copyJointGroupPositions(joint_model_group_, _joint);
+    for(int j=0; j<6; ++j){
+      traj.points[i+1].positions.push_back(_joint[conversion[j]]);
+      const double *joint_vel = kinematic_state->getVariableVelocities();
+      traj.points[i+1].velocities.push_back(joint_vel[conversion[j]]);
+    }
+    traj.points[i+1].time_from_start = ros::Duration((i+1)*dt);
+  }
+  // TODO: what if robot arm out-of-workspace?
+  // FIXME: sometimes the robot will vibrate back?
+  StartTrajectory(goal);
   res.plan_result = "done";
   return true;
 }

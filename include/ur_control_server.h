@@ -46,6 +46,7 @@
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <arm_operation/target_pose.h>
 #include <arm_operation/joint_pose.h>
+#include <arm_operation/velocity_ctrl.h>
 #include <tf/transform_datatypes.h>
 // Moveit
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -61,6 +62,7 @@ class RobotArm {
  private:
   // Varaibles
   int num_sols;
+  const double dt; // Control preiod for velocity control
   double joint[6];
   double tool_length;
   double wrist1_upper_bound, wrist1_lower_bound;
@@ -93,6 +95,7 @@ class RobotArm {
   ros::ServiceServer goto_pose_srv;
   ros::ServiceServer go_straight_srv;
   ros::ServiceServer goto_joint_pose_srv;
+  ros::ServiceServer vel_ctrl_srv;
   TrajClient *traj_client;
   //control_msgs::FollowJointTrajectoryGoal goal; 
   control_msgs::FollowJointTrajectoryGoal path;
@@ -186,6 +189,7 @@ class RobotArm {
    bool GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
    bool GotoJointPoseService(arm_operation::joint_pose::Request &req, arm_operation::joint_pose::Response &res);
+   bool VelocityControlService(arm_operation::velocity_ctrl::Request &req, arm_operation::velocity_ctrl::Response &res);
    void PoseToDH(geometry_msgs::Pose pose, double *T);
 };
 

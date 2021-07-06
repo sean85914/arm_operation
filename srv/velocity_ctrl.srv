@@ -1,4 +1,5 @@
 geometry_msgs/Twist twist
-std_msgs/Float32 duration
+float32 duration
+bool frame # Which frame this twist referred to. 0-> base link, 1-> ee link
 ---
-std_msgs/String plan_result
+string plan_result

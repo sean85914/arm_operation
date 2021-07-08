@@ -1,4 +1,4 @@
-geometry_msgs/Twist twist
+geometry_msgs/Twist twist # angular accepts only one non-zero value
 float32 duration
 bool frame # Which frame this twist referred to. 0-> base link, 1-> ee link
 ---

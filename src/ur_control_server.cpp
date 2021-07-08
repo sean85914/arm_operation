@@ -89,6 +89,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
     std::cout << "\t" << joint_names[i] << "\n";
   // Show parameter information
   ROS_INFO("*********************************************************************************");
+  ROS_INFO("[%s] tf_prefix: %s", ros::this_node::getName().c_str(), tf_prefix.c_str());
   ROS_INFO("[%s] Tool length: %f", ros::this_node::getName().c_str(), tool_length);
   ROS_INFO("[%s] Action server name: %s", ros::this_node::getName().c_str(), action_server_name.c_str());
   ROS_INFO("[%s] Wrist 1 bound: [%f, %f]", ros::this_node::getName().c_str(), wrist1_lower_bound, wrist1_upper_bound);
@@ -105,7 +106,7 @@ RobotArm::RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh):
 
 RobotArm::~RobotArm(){
   delete traj_client;
-  ROS_WARN("[%s] Node shutdown", ros::this_node::getName().c_str());
+  printf("[%s] Node shutdown\n", ros::this_node::getName().c_str());
 }
 
 bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res){
@@ -136,7 +137,6 @@ bool RobotArm::GotoPoseService(arm_operation::target_pose::Request &req, arm_ope
   return true;
 }
 
-// TODO
 bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res){
   ROS_INFO("[%s] Receive new straight line goal: %f %f %f %f %f %f %f", ros::this_node::getName().c_str(),
                                                                         req.target_pose.position.x, 
@@ -148,9 +148,14 @@ bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, a
                                                                         req.target_pose.orientation.w);
   trajectory_msgs::JointTrajectory &l = path.trajectory;
   if(l.joint_names.size()==0){
-    l.joint_names.resize(6);
+    l.joint_names.resize(joint_names.size());
     for(int i=0; i<6; ++i)
       l.joint_names[i] = joint_names[conversion[i]];
+  }
+  l.points.resize(NUMBEROFPOINTS+1);
+  for(int i=0; i<NUMBEROFPOINTS+1; ++i){
+    l.points[i].positions.resize(joint_names.size());
+    l.points[i].velocities.resize(joint_names.size());
   }
   geometry_msgs::Pose pose_now = curr_tcp_pose;
   double waypoint_sol_[NUMBEROFPOINTS * 6] = {0}, temp[6] = {0};
@@ -203,13 +208,13 @@ bool RobotArm::GoStraightLineService(arm_operation::target_pose::Request &req, a
   for (int i=0; i<NUMBEROFPOINTS; ++i) {
     double temp[6]={0};
     for (int j=0; j<6; ++j){
-      l.points[i+1].positions[j] = waypoint_sol_[i*6 + j];
-      l.points[i+1].velocities[j] = 2* x(0, j) * total_time * (i+1) / double(NUMBEROFPOINTS) + x(1, j);
+      l.points[i+1].positions[j] = waypoint_sol_[i*6 + conversion[j]];
+      l.points[i+1].velocities[j] = 2* x(0, j) * total_time * (i+1) / double(NUMBEROFPOINTS) + x(1, conversion[j]);
       l.points[i+1].time_from_start = ros::Duration(total_time * (i+1) / double(NUMBEROFPOINTS));
     }
   }
   for (int i=0; i<6; ++i) {
-    l.points[0].positions[i] = joint[i];
+    l.points[0].positions[i] = joint[conversion[i]];
     l.points[0].velocities[i] = 0;
     l.points[NUMBEROFPOINTS].velocities[i] = 0; 
     l.points[0].time_from_start = ros::Duration(0);
@@ -286,15 +291,50 @@ bool RobotArm::VelocityControlService(arm_operation::velocity_ctrl::Request &req
     traj.points[0].positions.push_back(joint[i]);
     traj.points[0].velocities.push_back(0.0);
   }
+  tf::Quaternion quat(curr_tcp_pose.orientation.x, 
+                      curr_tcp_pose.orientation.y, 
+                      curr_tcp_pose.orientation.z, 
+                      curr_tcp_pose.orientation.w);
+  tf::Matrix3x3 mat(quat);
+  geometry_msgs::Pose final_pose = curr_tcp_pose;
+  tf::Matrix3x3 del(1., -wz*dt, wy*dt, 
+                    wz*dt, 1., -wx*dt, 
+                    -wy*dt, wx*dt, 1.), 
+                T, 
+                T_final;
+  T.setIdentity();
+  for(int i=0; i<STEPS; ++i)
+    T *= del;
+  if(!req.frame){ // base, multiply ahead
+    final_pose.position.x += vx*t;
+    final_pose.position.y += vy*t;
+    final_pose.position.z += vz*t;
+    T_final = T*mat;
+  }
+  else{ // ee, multiply behind
+    tf::Vector3 trans_base(vx*t, vy*t, vz*t), trans_ee = mat*trans_base;
+    final_pose.position.x += trans_ee.getX();
+    final_pose.position.y += trans_ee.getY();
+    final_pose.position.z += trans_ee.getZ();
+    T_final = mat*T;
+  }
+  tf::Quaternion _quat; 
+  T_final.getRotation(_quat);
+  _quat.normalize();
+  final_pose.orientation.x = _quat.getX();
+  final_pose.orientation.y = _quat.getY();
+  final_pose.orientation.z = _quat.getZ();
+  final_pose.orientation.w = _quat.getW();
+  double tmp[8*6];
+  if(!PerformIK(final_pose, tmp)){
+    res.plan_result = "robot can't reach final pose";
+    ROS_WARN("[%s] %s", ros::this_node::getName().c_str(), res.plan_result.c_str());
+    return true;
+  }
   traj.points[0].time_from_start = ros::Duration(0.0);
   Eigen::VectorXd twist(6);
   // Convert back to base_link coordinate if frame == 0 
   if(!req.frame){
-    tf::Quaternion quat(curr_tcp_pose.orientation.x, 
-                        curr_tcp_pose.orientation.y, 
-                        curr_tcp_pose.orientation.z, 
-                        curr_tcp_pose.orientation.w);
-    tf::Matrix3x3 mat(quat);
     tf::Vector3 vel_vec = mat.inverse() * tf::Vector3(vx, vy, vz), 
                 rot_vec = mat.inverse() * tf::Vector3(wx, wy, wz);
     twist << vel_vec.getX(), vel_vec.getY(), vel_vec.getZ(), rot_vec.getX(), rot_vec.getY(), rot_vec.getZ();
@@ -306,7 +346,7 @@ bool RobotArm::VelocityControlService(arm_operation::velocity_ctrl::Request &req
   robot_state::RobotStatePtr kinematic_state_ = kinematic_state; 
   robot_state::JointModelGroup* joint_model_group_ = joint_model_group;
   for(int i=0; i<STEPS; ++i){
-    kinematic_state_->setFromDiffIK(joint_model_group_, twist, joint_model_group->getLinkModelNames().back(), dt);
+    kinematic_state_->setFromDiffIK(joint_model_group_, twist, joint_model_group->getLinkModelNames().back() /* ee_link*/, dt);
     std::vector<double> _joint;
     kinematic_state_->copyJointGroupPositions(joint_model_group_, _joint);
     for(int j=0; j<6; ++j){
@@ -316,7 +356,6 @@ bool RobotArm::VelocityControlService(arm_operation::velocity_ctrl::Request &req
     }
     traj.points[i+1].time_from_start = ros::Duration((i+1)*dt);
   }
-  // TODO: what if robot arm out-of-workspace?
   // FIXME: sometimes the robot will vibrate back?
   StartTrajectory(goal);
   res.plan_result = "done";
@@ -379,7 +418,6 @@ void RobotArm::PoseToDH(geometry_msgs::Pose pose, double *T){
   T[7]  = pose.position.y; 
   T[11] = pose.position.z; 
   T[15] = 1.0;
-  std::cout << "\n";
 }
 
 int RobotArm::PerformIK(geometry_msgs::Pose target_pose, double *sol){

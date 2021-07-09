@@ -28,6 +28,7 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules
   message_generation
   moveit_core
   moveit_ros_planning
+  octomap_ros
 )
 find_package(Eigen REQUIRED)
 find_package(Qt5 COMPONENTS Widgets Gui Core REQUIRED)

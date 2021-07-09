@@ -1,4 +1,4 @@
 geometry_msgs/Pose target_pose
-float32 factor
+float32 factor # the bigger the slower
 ---
 string plan_result

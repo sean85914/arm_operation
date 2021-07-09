@@ -50,34 +50,43 @@
 #include <tf/transform_datatypes.h>
 // Moveit
 #include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 
 #define deg2rad(x) (x*M_PI/180.0)
-#define NUMBEROFPOINTS 10
+#define RES 0.01
+#define TRANS_TOLER 0.001 // 1 mm
+#define ANGLE_TOLER 0.01745 // 1 degree
 
 typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> TrajClient;
 
 class RobotArm {
+ public:
+  enum ModeEnum{
+    GOTO_JOINT, 
+    GOTO_POSE, 
+    LINEAR_MOVE, 
+    VELOCITY_CTRL
+  };
  private:
   // Varaibles
+  bool _lock;
+  int mode; // last control request mode
   int num_sols;
-  const double dt; // Control preiod for velocity control
-  double joint[6];
+  const double dt; // Control preiod for control
+  double joint[6]; // shoulder-lift/ shoulder-pan/ elbow/ wrist 1/ wrist 2/ wrist 3
   double tool_length;
-  double wrist1_upper_bound, wrist1_lower_bound;
-  double wrist2_upper_bound, wrist2_lower_bound;
-  double wrist3_upper_bound, wrist3_lower_bound;
-  double force_thres;// Higher than this value should cancel the goal DEPRECATED
-  bool is_send_goal;
+  double curr_det;
+  double _lock_det;
   bool initialized;
-  bool wrist1_collision;
-  bool wrist2_collision;
-  bool wrist3_collision;
+  bool self_collision;
   std::string tf_prefix;
   std::string action_server_name;
   std::vector<int> conversion;
   std::vector<std::string> joint_names;
+  std::map<std::string, double> max_speed_param;
+  std::vector<double> max_speed;
   std_msgs::Float32 det_msg;
   Eigen::Vector3d reference_position;
   geometry_msgs::Pose curr_tcp_pose;
@@ -89,11 +98,9 @@ class RobotArm {
   ros::Publisher pub_det;
   // Subscriber
   ros::Subscriber sub_joint_state;
-  ros::Subscriber sub_robot_state;
-  ros::Subscriber sub_wrench;
   // Services
   ros::ServiceServer goto_pose_srv;
-  ros::ServiceServer go_straight_srv;
+  ros::ServiceServer linear_move_srv;
   ros::ServiceServer goto_joint_pose_srv;
   ros::ServiceServer vel_ctrl_srv;
   TrajClient *traj_client;
@@ -104,11 +111,11 @@ class RobotArm {
   robot_model::RobotModelPtr kinematic_model;
   robot_state::RobotStatePtr kinematic_state;
   robot_state::JointModelGroup* joint_model_group;
+  planning_scene::PlanningScenePtr planning_scene;
   // Private Functions
   /*
    *  Subscriber callback, update joints' value
    */
-  void JointStateCallback(const sensor_msgs::JointState &msg);
   /*
    *  Convert pose to transformation matrix
    *  Input:
@@ -116,35 +123,18 @@ class RobotArm {
    *    double *T: output placeholder
    *  Output: None
    */
+  void PoseToDH(geometry_msgs::Pose pose, double *T);
+  void JointStateCallback(const sensor_msgs::JointState &msg);
   /*
    *  Perform inverse kinematic and return the optimized joints solution
    *  Input:
    *    geometry_msgs::Pose target_pose: target pose
    *    double *sol: output placeholder of size-6 double array
+   *    double init_jacob: Jacobian determinant at initial pose, 0 for ignoring sign conversion
    *  Output:
-   *    int: number of IK solutions
+   *    int: number of IK solutions from ur_kinematics::inverse with NaN removed
    */
-  int PerformIK(geometry_msgs::Pose target_pose, double *sol);
-  /*
-   *  Perform inverse kinematic and return the optimized joints solution
-   *  Will consider best wrist motion
-   *  Input:
-   *    geometry_msgs::Pose target_pose: target pose
-   *    double *sol: output placeholder of size-6 double array
-   *  Output:
-   *    int: number of IK solutions
-   */
-  int PerformIKWristMotion(geometry_msgs::Pose target_pose, double *sol);
-  /*
-   *  Check if input wrist angle will self-collision
-   *  Input:
-   *    double &joint: wrist angle
-   *    double upper: corresponding wrist upper bound
-   *    double lower: corresponding wrist lower bound
-   *  Output:
-   *    bool: true if collision happened, false otherwise
-   */
-  inline bool wrist_check_bound(double &joint, double upper, double lower);
+  int PerformIK(geometry_msgs::Pose target_pose, double *sol, double curr_det);
   /*
    *  Get current TCP pose
    *  Input: None
@@ -157,11 +147,11 @@ class RobotArm {
    *  Input:
    *    const double *now: joint position array now
    *    const double *togo: target pose joint position array
-   *    double factor: joint velocity factor, the larger the faster, default as 0.5
+   *    double factor: joint velocity factor, the larger the faster, default is 1.0
    *  Output:
    *    double: time to execute this trajectory
    */
-  double calculate_time(const double *now, const double *togo, double factor=0.5);
+  double calculate_time(const double *now, const double *togo, double factor=1.0);
   /*
    * Get trajectory execution state
    */
@@ -182,15 +172,43 @@ class RobotArm {
    *    control_msgs::FollowJointTrajectoryGoal
    */
   control_msgs::FollowJointTrajectoryGoal ArmToDesiredPoseTrajectory(geometry_msgs::Pose pose, double factor);
+  /*
+   *  Check if self-collision will happend in this robot state
+   *  Input:
+   *    const std::vector<double> *togo: target pose joint position array, in joint order: 1, 2, 3, 4, 5, 6
+   *  Output:
+   *    bool: true if collision, false otherwise
+   */
+  bool _checkSelfCollision(const std::vector<double> togo);
+  /*
+   *  Get Jacobian determinant of this robot state
+   *  Input:
+   *    const std::vector<double> togo: target joint position to compute
+   *  Output:
+   *    double: Jacobian matrix determinant
+   */
+  double _getJacobianDet(const std::vector<double> togo);
+  /*
+   *  Lock the robot and record current determinant value
+   */
+  void _lockRobot(void);
+  /*
+   *  Conpute translation and angle difference between current and target pose
+   *  Input:
+   *    const geometry_msgs::Pose target: target pose
+   *  Outout:
+   *    double &trans_diff: translation difference
+   *    double &angle_diff: angle difference
+   */
+  void _compute_pose_diff(const geometry_msgs::Pose target, double &trans_diff, double &angle_diff);
  public:
    RobotArm(ros::NodeHandle nh, ros::NodeHandle pnh);
    ~RobotArm();
    // Service server callback
-   bool GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
-   bool GoStraightLineService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
-   bool GotoJointPoseService(arm_operation::joint_pose::Request &req, arm_operation::joint_pose::Response &res);
-   bool VelocityControlService(arm_operation::velocity_ctrl::Request &req, arm_operation::velocity_ctrl::Response &res);
-   void PoseToDH(geometry_msgs::Pose pose, double *T);
+  bool GotoPoseService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
+  bool LinearMoveService(arm_operation::target_pose::Request &req, arm_operation::target_pose::Response &res);
+  bool GotoJointPoseService(arm_operation::joint_pose::Request &req, arm_operation::joint_pose::Response &res);
+  bool VelocityControlService(arm_operation::velocity_ctrl::Request &req, arm_operation::velocity_ctrl::Response &res);
 };
 
 #endif

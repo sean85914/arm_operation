@@ -35,7 +35,7 @@ Clone this repo into your workspace
 
 ## Message Type:
 * [joint_value.msg](https://github.com/sean85914/arm_operation/blob/e_series/msg/joint_value.msg)
-  * [float32[6]] joint_value
+  * float32[6] joint_value
 
 ## Service Type:
 * [joint_pose.srv](https://github.com/sean85914/arm_operation/blob/e_series/srv/joint_pose.srv)
